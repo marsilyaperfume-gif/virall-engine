@@ -1,0 +1,71 @@
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": process.env.FRONTEND_URL || "*",
+  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+  "Content-Type": "application/json"
+};
+
+function parseCookies(cookieHeader = "") {
+  return Object.fromEntries(cookieHeader.split(";").map(v => v.trim()).filter(Boolean).map(v => {
+    const i = v.indexOf("=");
+    return [v.slice(0, i), decodeURIComponent(v.slice(i + 1))];
+  }));
+}
+
+function frontendUrl() {
+  return process.env.FRONTEND_URL || "https://virall-engine.netlify.app";
+}
+
+function callbackUrl() {
+  return process.env.META_REDIRECT_URI || `${frontendUrl()}/.netlify/functions/instagram-callback`;
+}
+
+async function graphGet(path, params) {
+  const url = new URL(`https://graph.facebook.com/v20.0/${path}`);
+  Object.entries(params || {}).forEach(([k,v]) => url.searchParams.set(k, v));
+  const res = await fetch(url);
+  const data = await res.json();
+  if (!res.ok) throw new Error(JSON.stringify(data));
+  return data;
+}
+
+async function graphPost(path, params) {
+  const url = new URL(`https://graph.facebook.com/v20.0/${path}`);
+  Object.entries(params || {}).forEach(([k,v]) => url.searchParams.set(k, v));
+  const res = await fetch(url, { method: "POST" });
+  const data = await res.json();
+  if (!res.ok) throw new Error(JSON.stringify(data));
+  return data;
+}
+
+const { getStore } = require("@netlify/blobs");
+
+exports.handler = async function(event) {
+  if (event.httpMethod === "OPTIONS") return { statusCode: 204, headers: corsHeaders };
+
+  try {
+    const store = getStore("ig_accounts");
+    const listed = await store.list();
+    const accounts = [];
+
+    for (const blob of listed.blobs || []) {
+      const item = await store.get(blob.key, { type: "json" });
+      if (item) {
+        accounts.push({
+          id: item.instagramId,
+          instagramId: item.instagramId,
+          username: item.username,
+          name: item.name,
+          pageName: item.pageName,
+          profilePicture: item.profilePicture,
+          connectedAt: item.connectedAt
+        });
+      }
+    }
+
+    return { statusCode: 200, headers: corsHeaders, body: JSON.stringify({ accounts }) };
+  } catch (err) {
+    return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ error: err.message }) };
+  }
+};

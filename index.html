@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Marrsile Auto Reels v10.5 Clean Fixed</title>
+<link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+<div class="bg"></div>
+
+<section id="loginScreen" class="login">
+  <div class="login-card">
+    <div class="mark">M</div>
+    <h1>MARRSILE <span>AUTO REELS V10.5</span></h1>
+    <p>نسخة نظيفة ومفحوصة: رفع فيديوهات + توليد هوكات + حفظ إعدادات + Autopilot.</p>
+    <input id="email" value="info@marrsile.com"/>
+    <input id="password" value="Mo774853" type="password"/>
+    <button id="loginBtn">دخول</button>
+  </div>
+</section>
+
+<section id="app" class="app hidden">
+  <aside>
+    <div class="brand">
+      <div class="mark mini">M</div>
+      <div><b>MARRSILE</b><span>Clean Control</span></div>
+    </div>
+    <button class="nav active" data-tab="dashboard">الرئيسية</button>
+    <button class="nav" data-tab="control">Control Center</button>
+    <button class="nav" data-tab="videos">الفيديوهات</button>
+    <button class="nav" data-tab="accounts">الحسابات</button>
+    <button class="nav" data-tab="hooks">مصنع الهوكات</button>
+    <button class="nav" data-tab="queue">Autopilot Queue</button>
+    <button class="nav" data-tab="settings">الربط</button>
+  </aside>
+
+  <main>
+    <header>
+      <div>
+        <h2 id="pageTitle">الرئيسية</h2>
+        <p>اضبط الإعدادات مرة واحدة، ارفع الفيديوهات، ثم شغّل النشر التلقائي.</p>
+      </div>
+      <div class="header-actions">
+        <button class="secondary" data-open="control">الإعدادات</button>
+        <button class="primary" id="uploadBtn">+ رفع فيديوهات</button>
+        <input id="videoInput" type="file" hidden multiple accept="video/*"/>
+      </div>
+    </header>
+
+    <section id="dashboard" class="tab">
+      <div class="hero card">
+        <div>
+          <span class="pill">v10.5 Clean Fixed</span>
+          <h1>الرفع والهوكات يعملان الآن بكود نظيف</h1>
+          <p>تم فصل محرك الرفع عن محرك الهوكات لمنع الأخطاء. زر توليد الهوك يعمل من كل مكان، والرفع يدعم الضغط والسحب والإفلات.</p>
+          <div class="actions">
+            <button class="primary" id="startAutoBtn">تشغيل Autopilot</button>
+            <button class="secondary" data-open="control">تعديل الإعدادات</button>
+          </div>
+        </div>
+        <div class="phone">
+          <video id="heroVideo" muted loop playsinline></video>
+          <div id="heroHook" class="hook">لا تدفع سعر الوكيل قبل ما تشوف هذا العطر</div>
+          <div class="ig">♥ 48.2K · 💬 1,240 · ↗ 8,910</div>
+          
+        </div>
+      </div>
+
+      <div class="stats">
+        <div><b id="statVideos">0</b><span>فيديو</span></div>
+        <div><b id="statAccounts">0</b><span>حساب</span></div>
+        <div><b id="statQueue">0</b><span>Queue</span></div>
+        <div><b id="autoState">OFF</b><span>Autopilot</span></div>
+      </div>
+    </section>
+
+    <section id="control" class="tab hidden">
+      <div class="control-grid">
+        <div class="card">
+          <h3>1) إعداد الهوك</h3>
+          <label>نمط الهوك</label>
+          <select id="hookType">
+            <option value="infinite">لا نهائي ذكي</option>
+            <option value="sales">مبيعات قوي</option>
+            <option value="curiosity">فضول</option>
+            <option value="price">صدمة سعر</option>
+            <option value="luxury">فخامة</option>
+            <option value="problem">حل مشكلة</option>
+            <option value="social">إثبات اجتماعي</option>
+            <option value="urgency">ندرة</option>
+          </select>
+
+          <label>قوة الهوك</label>
+          <select id="hookPower">
+            <option value="high">قوي</option>
+            <option value="aggressive">هجومي مبيعات</option>
+            <option value="premium">راقي وفاخر</option>
+            <option value="short">قصير جداً</option>
+          </select>
+
+          <label>إيموجي</label>
+          <select id="emojiMode">
+            <option value="balanced">متوازن</option>
+            <option value="none">بدون</option>
+            <option value="strong">قوي</option>
+          </select>
+
+          <label>طول الهوك</label>
+          <select id="hookLength">
+            <option value="oneLine">سطر واحد</option>
+            <option value="twoLines">سطرين</option>
+          </select>
+
+          <button class="primary full" id="demoHookBtn">توليد هوك الآن</button>
+        </div>
+
+        <div class="card">
+          <h3>2) شكل الهوك فوق الفيديو</h3>
+          <label>ستايل</label>
+          <select id="hookStyle">
+            <option value="bold">أسود قوي</option>
+            <option value="luxury">ذهبي فاخر</option>
+            <option value="clean">أبيض نظيف</option>
+            <option value="red">أحمر عروض</option>
+            <option value="glass">زجاجي عصري</option>
+          </select>
+
+          <label>حجم الخط <span id="fontValue">36px</span></label>
+          <input id="fontSize" type="range" min="22" max="72" value="36"/>
+
+          <label>مكان الهوك <span id="topValue">58px</span></label>
+          <input id="hookTop" type="range" min="10" max="240" value="58"/>
+
+          <label>عرض صندوق النص <span id="widthValue">88%</span></label>
+          <input id="boxWidth" type="range" min="60" max="96" value="88"/>
+
+          <label>شفافية الخلفية <span id="opacityValue">82%</span></label>
+          <input id="hookOpacity" type="range" min="15" max="98" value="82"/>
+
+          <label>استدارة الحواف <span id="radiusValue">17px</span></label>
+          <input id="hookRadius" type="range" min="0" max="32" value="17"/>
+        </div>
+
+        <div class="card preview-card">
+          <h3>معاينة مباشرة</h3>
+          <div class="phone large">
+            <video id="settingsVideo" muted loop playsinline></video>
+            <div id="settingsHook" class="hook">لا تدفع سعر الوكيل قبل ما تشوف هذا العطر</div>
+          </div>
+
+          <div class="video-controls">
+            <button class="secondary" id="previewPlayBtn" type="button">تشغيل</button>
+            <button class="secondary" id="previewBackBtn" type="button">-5 ثواني</button>
+            <button class="secondary" id="previewForwardBtn" type="button">+5 ثواني</button>
+            <button class="secondary" id="previewMuteBtn" type="button">تشغيل الصوت</button>
+          </div>
+          <input id="previewSeek" class="seek" type="range" min="0" max="100" value="0"/>
+          <div class="time-readout"><span id="previewCurrent">00:00</span><span id="previewDuration">00:00</span></div>
+
+          <button class="secondary full" id="saveControlBtn">حفظ الإعدادات</button>
+        </div>
+      </div>
+
+      <div class="control-grid">
+        <div class="card">
+          <h3>3) الكابشن والمبيعات</h3>
+          <label>نوع العرض</label>
+          <select id="offerType">
+            <option value="discount">خصومات قوية</option>
+            <option value="freeShipping">توصيل مجاني</option>
+            <option value="cod">دفع عند الاستلام</option>
+            <option value="bundle">اطلب أكثر ووفر</option>
+            <option value="premium">فخامة وسعر منافس</option>
+          </select>
+
+          <label>CTA</label>
+          <select id="ctaMode">
+            <option value="bio">اطلب من الرابط في البايو</option>
+            <option value="whatsapp">راسلنا واتساب</option>
+            <option value="limited">اطلب قبل نفاد الكمية</option>
+            <option value="shopNow">تسوق الآن</option>
+          </select>
+
+          <label>هاشتاقات</label>
+          <input id="hashtags" value="#عطور #Perfume #عطور_فاخرة"/>
+
+          <label>تذييل الكابشن</label>
+          <input id="captionFooter" value="توصيل سريع · دفع عند الاستلام"/>
+        </div>
+
+        <div class="card">
+          <h3>4) الجدول</h3>
+          <label>عدد الفيديوهات يومياً لكل حساب</label>
+          <div class="counter">
+            <button id="dailyMinus">-</button>
+            <b id="dailyCount">3</b>
+            <button id="dailyPlus">+</button>
+          </div>
+          <label>أوقات النشر</label>
+          <div id="timeList"></div>
+          <button class="secondary full" id="addTimeBtn">+ إضافة وقت</button>
+
+          <label>تأخير عشوائي بين الحسابات</label>
+          <select id="delayMode">
+            <option value="off">بدون تأخير</option>
+            <option value="5-15">عشوائي 5 - 15 دقيقة</option>
+            <option value="10-30">عشوائي 10 - 30 دقيقة</option>
+            <option value="15-45">عشوائي 15 - 45 دقيقة</option>
+            <option value="30-90">عشوائي 30 - 90 دقيقة</option>
+            <option value="custom">مخصص</option>
+          </select>
+
+          <div class="delay-custom">
+            <input id="delayMin" type="number" min="0" value="10" placeholder="أقل تأخير بالدقائق"/>
+            <input id="delayMax" type="number" min="0" value="30" placeholder="أعلى تأخير بالدقائق"/>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>5) قواعد Autopilot</h3>
+          <label><input id="autoHook" type="checkbox" checked/> توليد هوك مختلف لكل فيديو</label>
+          <label><input id="autoCaption" type="checkbox" checked/> كابشن تلقائي حسب الحساب</label>
+          <label><input id="avoidRepeat" type="checkbox" checked/> منع تكرار الفيديو على نفس الحساب</label>
+          <label><input id="abTesting" type="checkbox" checked/> A/B Test تلقائي</label>
+          <label><input id="smartRepost" type="checkbox" checked/> إعادة نشر الفيديوهات الناجحة</label>
+          <label><input id="autoRetry" type="checkbox" checked/> إعادة المحاولة عند الفشل</label>
+          <button class="primary full" id="saveAndRunBtn">حفظ وتشغيل Autopilot</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="videos" class="tab hidden">
+      <div id="dropZone" class="drop-zone">
+        <h3>اضغط هنا أو اسحب الفيديوهات لرفعها</h3>
+        <p>يدعم MP4 / MOV / WebM</p>
+      </div>
+
+      
+      <div class="card repair-panel">
+        <h3>إصلاح توافق الفيديوهات</h3>
+        <p>يفحص الفيديو عند الرفع. إذا كان HEVC/H.265 أو لا يعمل في المتصفح، يتم تمييزه كـ "يحتاج إصلاح". الإصلاح يتم داخلياً داخل المتصفح بدون سيرفر باستخدام FFmpeg WebAssembly، مع الحفاظ على الدقة قدر الإمكان.</p>
+        <div class="repair-options">
+          <label><input id="autoRepair" type="checkbox" checked/> إصلاح تلقائي للفيديوهات غير المتوافقة عند توفر السيرفر</label>
+          <label><input id="keepQuality" type="checkbox" checked disabled/> الحفاظ على الجودة والدقة بدون ضغط مقصود</label>
+        </div>
+        <div class="actions">
+          <button class="secondary" id="scanVideosBtn">فحص الفيديوهات</button>
+          <button class="primary" id="repairVideosBtn">إصلاح داخلي لغير المتوافق</button>
+          <button class="secondary" id="forceRepairBtn">إصلاح داخلي لكل الفيديوهات</button>
+        </div>
+      </div>
+
+
+      <div class="toolbar card">
+        <div>
+          <h3>الفيديوهات</h3>
+          <p>بعد الرفع، يتم توليد هوك وكابشن تلقائياً لكل فيديو.</p>
+        </div>
+        <div class="actions">
+          <button class="primary" id="uploadBtn2">رفع فيديوهات</button>
+          <button class="secondary" id="applyAllBtn">تطبيق الإعدادات على الكل</button>
+        </div>
+      </div>
+
+      <div class="split">
+        <div class="card">
+          <div id="videoList" class="video-list"></div>
+        </div>
+        <div class="card editor">
+          <video id="editorVideo" controls playsinline></video>
+          <label>الهوك الحالي</label>
+          <textarea id="videoHook"></textarea>
+          <label>الكابشن الحالي</label>
+          <textarea id="videoCaption"></textarea>
+          <button class="secondary full" id="regenSelectedBtn">توليد جديد لهذا الفيديو</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="accounts" class="tab hidden">
+      <div class="grid2">
+        <div class="card">
+          <h3>إضافة حساب</h3>
+          <input id="accName" placeholder="Marrsile Saudi"/>
+          <input id="accUser" placeholder="@username"/>
+          <select id="accMarket">
+            <option>السعودية</option>
+            <option>قطر</option>
+            <option>عمان</option>
+            <option>الإمارات</option>
+            <option>عام الخليج</option>
+          </select>
+          <input id="accLink" placeholder="رابط المتجر"/>
+          <button class="primary full" id="addAccountBtn">إضافة تجريبية</button>
+          <button class="secondary full" id="connectInstagramBtn" type="button">ربط Instagram رسمي عبر Meta</button>
+          <button class="secondary full" id="refreshOfficialAccountsBtn" type="button">تحديث الحسابات الرسمية</button>
+        </div>
+        <div class="card">
+          <h3>الحسابات</h3>
+          <div id="accountsList" class="account-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="hooks" class="tab hidden">
+      <div class="card">
+        <h3>بنك الهوكات المعتمدة</h3>
+        <p>هذه هي نفس الـ 50 هوك المعتمدة بدون تعديل أو إضافة.</p>
+        <button class="primary" id="factoryBtn">عرض الـ 50 هوك المعتمدة</button>
+      </div>
+      <div id="hookFactory" class="factory"></div>
+    </section>
+
+    <section id="queue" class="tab hidden">
+      <div class="toolbar card">
+        <div>
+          <h3>Autopilot Queue</h3>
+          <p>هنا يظهر جدول النشر بعد تشغيل Autopilot.</p>
+        </div>
+        <button class="primary" id="queueRunBtn">إعادة بناء Queue</button>
+      </div>
+      <div id="queueList" class="queue-list"></div>
+    </section>
+
+    <section id="settings" class="tab hidden">
+      <div class="grid2">
+        <div class="card">
+          <h3>Netlify Functions</h3>
+          <p>لا تحتاج Render. الربط الرسمي يعمل عبر Netlify Functions داخل نفس الموقع.</p>
+          <input id="backendUrl" value="/.netlify/functions" placeholder="/.netlify/functions"/>
+          <button class="secondary full" id="saveBackendBtn">حفظ</button>
+        </div>
+        <div class="card">
+          <h3>Storage</h3>
+          <p>للنشر الحقيقي نحتاج Cloudinary/S3 لتحويل الفيديو إلى رابط عام.</p>
+          <input placeholder="Cloudinary Cloud Name"/>
+          <input placeholder="Upload Preset"/>
+          <button class="secondary full">حفظ</button>
+        </div>
+      </div>
+    </section>
+  </main>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
