@@ -39,7 +39,25 @@ async function graphPost(path, params) {
   return data;
 }
 
-const { getStore } = require("@netlify/blobs");
+
+
+
+function blobStore(name) {
+  const { getStore } = require("@netlify/blobs");
+
+  const siteID = process.env.NETLIFY_SITE_ID || process.env.SITE_ID;
+  const token = process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_AUTH_TOKEN;
+
+  if (siteID && token) {
+    return getStore({
+      name,
+      siteID,
+      token
+    });
+  }
+
+  return getStore(name);
+}
 
 exports.handler = async function(event) {
   if (event.httpMethod === "OPTIONS") return { statusCode: 204, headers: corsHeaders };
@@ -53,7 +71,7 @@ exports.handler = async function(event) {
       return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ error: "accountId, videoUrl and caption are required" }) };
     }
 
-    const store = getStore("ig_accounts");
+    const store = blobStore("ig_accounts");
     const account = await store.get(accountId, { type: "json" });
     if (!account) {
       return { statusCode: 404, headers: corsHeaders, body: JSON.stringify({ error: "Instagram account not found" }) };

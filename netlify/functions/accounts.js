@@ -39,13 +39,31 @@ async function graphPost(path, params) {
   return data;
 }
 
-const { getStore } = require("@netlify/blobs");
+
+
+
+function blobStore(name) {
+  const { getStore } = require("@netlify/blobs");
+
+  const siteID = process.env.NETLIFY_SITE_ID || process.env.SITE_ID;
+  const token = process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_AUTH_TOKEN;
+
+  if (siteID && token) {
+    return getStore({
+      name,
+      siteID,
+      token
+    });
+  }
+
+  return getStore(name);
+}
 
 exports.handler = async function(event) {
   if (event.httpMethod === "OPTIONS") return { statusCode: 204, headers: corsHeaders };
 
   try {
-    const store = getStore("ig_accounts");
+    const store = blobStore("ig_accounts");
     const listed = await store.list();
     const accounts = [];
 

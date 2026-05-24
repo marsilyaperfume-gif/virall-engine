@@ -39,7 +39,25 @@ async function graphPost(path, params) {
   return data;
 }
 
-const { getStore } = require("@netlify/blobs");
+
+
+
+function blobStore(name) {
+  const { getStore } = require("@netlify/blobs");
+
+  const siteID = process.env.NETLIFY_SITE_ID || process.env.SITE_ID;
+  const token = process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_AUTH_TOKEN;
+
+  if (siteID && token) {
+    return getStore({
+      name,
+      siteID,
+      token
+    });
+  }
+
+  return getStore(name);
+}
 
 exports.handler = async function(event) {
   try {
@@ -72,7 +90,7 @@ exports.handler = async function(event) {
       fields: "id,name,access_token,instagram_business_account{id,username,name,profile_picture_url}"
     });
 
-    const store = getStore("ig_accounts");
+    const store = blobStore("ig_accounts");
     let count = 0;
 
     for (const page of pages.data || []) {
