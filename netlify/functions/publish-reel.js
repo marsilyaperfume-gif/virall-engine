@@ -14,49 +14,42 @@ function parseCookies(cookieHeader = "") {
 }
 
 function frontendUrl() {
-  return process.env.FRONTEND_URL || "https://virall-engine.netlify.app";
+  return process.env.FRONTEND_URL || "https://virall-gcc.netlify.app";
 }
 
 function callbackUrl() {
   return process.env.META_REDIRECT_URI || `${frontendUrl()}/.netlify/functions/instagram-callback`;
 }
 
-async function graphGet(path, params) {
-  const url = new URL(`https://graph.facebook.com/v20.0/${path}`);
-  Object.entries(params || {}).forEach(([k,v]) => url.searchParams.set(k, v));
-  const res = await fetch(url);
-  const data = await res.json();
-  if (!res.ok) throw new Error(JSON.stringify(data));
-  return data;
-}
-
-async function graphPost(path, params) {
-  const url = new URL(`https://graph.facebook.com/v20.0/${path}`);
-  Object.entries(params || {}).forEach(([k,v]) => url.searchParams.set(k, v));
-  const res = await fetch(url, { method: "POST" });
-  const data = await res.json();
-  if (!res.ok) throw new Error(JSON.stringify(data));
-  return data;
-}
-
-
-
-
 function blobStore(name) {
   const { getStore } = require("@netlify/blobs");
-
   const siteID = process.env.NETLIFY_SITE_ID || process.env.SITE_ID;
   const token = process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_AUTH_TOKEN;
 
   if (siteID && token) {
-    return getStore({
-      name,
-      siteID,
-      token
-    });
+    return getStore({ name, siteID, token });
   }
 
   return getStore(name);
+}
+
+async function getJson(url, options = {}) {
+  const res = await fetch(url, options);
+  const data = await res.json();
+  if (!res.ok) throw new Error(JSON.stringify(data));
+  return data;
+}
+
+async function graphGet(path, params) {
+  const url = new URL(`https://graph.instagram.com/v21.0/${path}`);
+  Object.entries(params || {}).forEach(([k,v]) => url.searchParams.set(k, v));
+  return getJson(url);
+}
+
+async function graphPost(path, params) {
+  const url = new URL(`https://graph.instagram.com/v21.0/${path}`);
+  Object.entries(params || {}).forEach(([k,v]) => url.searchParams.set(k, v));
+  return getJson(url, { method: "POST" });
 }
 
 exports.handler = async function(event) {
@@ -81,12 +74,12 @@ exports.handler = async function(event) {
       media_type: "REELS",
       video_url: videoUrl,
       caption,
-      access_token: account.pageAccessToken
+      access_token: account.accessToken
     });
 
     const published = await graphPost(`${account.instagramId}/media_publish`, {
       creation_id: container.id,
-      access_token: account.pageAccessToken
+      access_token: account.accessToken
     });
 
     return { statusCode: 200, headers: corsHeaders, body: JSON.stringify({ ok: true, published }) };
