@@ -103,3 +103,16 @@ v13 Netlify Functions Integration:
   META_APP_ID=your_meta_app_id
   META_APP_SECRET=your_meta_app_secret
   META_REDIRECT_URI=https://virall-engine.netlify.app/.netlify/functions/instagram-callback
+
+
+v13.1 Netlify Blobs Manual Config:
+- Fixed Netlify Blobs configuration by supporting manual siteID/token.
+- Functions now use NETLIFY_SITE_ID + NETLIFY_AUTH_TOKEN when available.
+- Added /.netlify/functions/blobs-health diagnostic endpoint.
+- Required Netlify Environment Variables:
+  FRONTEND_URL=https://virall-gcc.netlify.app
+  NETLIFY_SITE_ID=your_site_id
+  NETLIFY_AUTH_TOKEN=your_personal_access_token
+  META_APP_ID=later
+  META_APP_SECRET=later
+  META_REDIRECT_URI=https://virall-gcc.netlify.app/.netlify/functions/instagram-callback
