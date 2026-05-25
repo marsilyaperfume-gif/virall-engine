@@ -40,7 +40,7 @@ async function publishUploadedVideoNow(index){
       },
       body:JSON.stringify({
         accountId:selected.id,
-        videoUrl:video.url,
+        videoUrl:video.cloudinaryUrl || video.url,
         caption:video.caption || ""
       })
     });
@@ -1025,7 +1025,7 @@ persistAll();
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({
           accountId: account.id,
-          videoUrl: video.url,
+          videoUrl: video.cloudinaryUrl || video.url,
           caption: item.caption || item.hook || ""
         })
       });
@@ -1418,3 +1418,256 @@ persistAll();
     }
   });
 })();
+
+
+/* ===== v25 Cloudinary Upload Fix ===== */
+async function uploadVideoToCloudinary(file){
+  const cloudName =
+    (settings && (settings.cloudinaryCloudName || settings.cloudName || settings.cloudinary_cloud_name)) ||
+    localStorage.getItem("cloudinaryCloudName") ||
+    localStorage.getItem("cloudName") ||
+    "";
+
+  const uploadPreset =
+    (settings && (settings.uploadPreset || settings.cloudinaryUploadPreset || settings.upload_preset)) ||
+    localStorage.getItem("uploadPreset") ||
+    localStorage.getItem("cloudinaryUploadPreset") ||
+    "";
+
+  if(!cloudName || !uploadPreset){
+    throw new Error("Cloudinary غير مضبوط. ضع Cloud Name و Upload Preset ثم اضغط حفظ.");
+  }
+
+  const form = new FormData();
+  form.append("file", file);
+  form.append("upload_preset", uploadPreset);
+  form.append("folder", "virall-gcc-reels");
+
+  const endpoint = `https://api.cloudinary.com/v1_1/${cloudName}/video/upload`;
+
+  const res = await fetch(endpoint, {
+    method: "POST",
+    body: form
+  });
+
+  const data = await res.json();
+
+  if(!res.ok){
+    throw new Error("Cloudinary upload failed: " + JSON.stringify(data));
+  }
+
+  if(!data.secure_url){
+    throw new Error("Cloudinary لم يرجع رابط فيديو secure_url");
+  }
+
+  return {
+    cloudinaryUrl: data.secure_url,
+    publicId: data.public_id,
+    duration: data.duration,
+    bytes: data.bytes,
+    format: data.format,
+    resourceType: data.resource_type
+  };
+}
+
+async function handleVideoFileWithCloudinary(file){
+  const localUrl = URL.createObjectURL(file);
+
+  const tempVideo = {
+    id: "v_" + Date.now() + "_" + Math.random().toString(16).slice(2),
+    name: file.name,
+    size: file.size,
+    type: file.type,
+    url: localUrl,
+    localUrl,
+    cloudinaryUrl: "",
+    uploadedToCloudinary: false,
+    status: "uploading_to_cloudinary",
+    createdAt: new Date().toISOString()
+  };
+
+  videos.push(tempVideo);
+  saveAllData && saveAllData();
+  if(typeof renderAll === "function") renderAll();
+
+  try{
+    const uploaded = await uploadVideoToCloudinary(file);
+    tempVideo.url = uploaded.cloudinaryUrl;
+    tempVideo.cloudinaryUrl = uploaded.cloudinaryUrl;
+    tempVideo.publicId = uploaded.publicId;
+    tempVideo.duration = uploaded.duration;
+    tempVideo.bytes = uploaded.bytes;
+    tempVideo.format = uploaded.format;
+    tempVideo.resourceType = uploaded.resourceType;
+    tempVideo.uploadedToCloudinary = true;
+    tempVideo.status = "ready";
+    tempVideo.compatible = true;
+
+    saveAllData && saveAllData();
+    if(typeof renderAll === "function") renderAll();
+
+    alert("تم رفع الفيديو إلى Cloudinary بنجاح");
+    return tempVideo;
+  }catch(err){
+    tempVideo.status = "cloudinary_failed";
+    tempVideo.error = err.message || String(err);
+    saveAllData && saveAllData();
+    if(typeof renderAll === "function") renderAll();
+    alert("فشل رفع Cloudinary: " + tempVideo.error);
+    return tempVideo;
+  }
+}
+
+function installCloudinaryUploadInterceptor(){
+  document.addEventListener("change", async (e)=>{
+    const input = e.target;
+    if(!input || input.type !== "file") return;
+    if(!input.files || !input.files.length) return;
+
+    const files = Array.from(input.files).filter(f => String(f.type || "").startsWith("video/"));
+    if(!files.length) return;
+
+    // Stop the old local-only upload path by clearing selected files after we take them.
+    for(const file of files){
+      await handleVideoFileWithCloudinary(file);
+    }
+
+    try{ input.value = ""; }catch(_){}
+  }, true);
+}
+
+if(!window.__cloudinaryUploadInterceptorInstalled){
+  window.__cloudinaryUploadInterceptorInstalled = true;
+  installCloudinaryUploadInterceptor();
+}
+/* ===== End v25 Cloudinary Upload Fix ===== */
+
+
+/* ===== v25 Cloudinary UI status badges ===== */
+function injectCloudinaryStatusBadges(){
+  try{
+    document.querySelectorAll(".video-item").forEach((card,index)=>{
+      const video = videos[index];
+      if(!video || card.querySelector(".cloudinary-status")) return;
+
+      const badge = document.createElement("div");
+      badge.className = "cloudinary-status" + (video.uploadedToCloudinary ? "" : " failed");
+      badge.textContent = video.uploadedToCloudinary ? "Cloudinary مرفوع ✅" : (video.status === "uploading_to_cloudinary" ? "جاري رفع Cloudinary..." : "غير مرفوع Cloudinary");
+      card.appendChild(badge);
+    });
+  }catch(err){}
+}
+setInterval(injectCloudinaryStatusBadges, 1200);
+/* ===== End v25 badges ===== */
+
+
+/* ===== v26 Queue Delete Controls ===== */
+function saveQueueChanges(){
+  try{
+    if(typeof saveAllData === "function") saveAllData();
+    if(window.__virallStore && typeof window.__virallStore.save === "function") window.__virallStore.save();
+    if(typeof v17SaveEverything === "function") v17SaveEverything();
+    localStorage.setItem("virall_queue", JSON.stringify(queue || []));
+    localStorage.setItem("virall_queue_data", JSON.stringify(queue || []));
+  }catch(err){
+    console.error("Queue save error", err);
+  }
+}
+
+function deleteQueueItem(index){
+  if(!Array.isArray(queue)) return;
+  const item = queue[index];
+  if(!item) return;
+
+  const ok = confirm("هل تريد حذف هذا الفيديو من الجدولة؟");
+  if(!ok) return;
+
+  queue.splice(index, 1);
+  saveQueueChanges();
+
+  if(typeof renderAll === "function") renderAll();
+  setTimeout(injectQueueDeleteControls, 200);
+}
+
+function clearAllQueue(){
+  if(!Array.isArray(queue) || !queue.length){
+    alert("لا توجد فيديوهات مجدولة حالياً");
+    return;
+  }
+
+  const ok = confirm("هل تريد حذف كل الفيديوهات من الجدولة؟");
+  if(!ok) return;
+
+  queue.length = 0;
+  saveQueueChanges();
+
+  if(typeof renderAll === "function") renderAll();
+  setTimeout(injectQueueDeleteControls, 200);
+
+  alert("تم حذف كل الجدولة");
+}
+
+function injectQueueDeleteControls(){
+  try{
+    const queueSection =
+      document.querySelector("#queue") ||
+      document.querySelector("[data-section='queue']") ||
+      Array.from(document.querySelectorAll("section, .card, .panel, div")).find(el =>
+        (el.textContent || "").includes("Autopilot Queue")
+      );
+
+    if(queueSection && !queueSection.querySelector(".clear-queue-btn")){
+      const clearBtn = document.createElement("button");
+      clearBtn.className = "clear-queue-btn";
+      clearBtn.type = "button";
+      clearBtn.textContent = "حذف كل الجدولة";
+      clearBtn.onclick = clearAllQueue;
+      queueSection.prepend(clearBtn);
+    }
+
+    document.querySelectorAll(".queue-item").forEach((card, index)=>{
+      if(card.querySelector(".delete-queue-item-btn")) return;
+
+      const controls = document.createElement("div");
+      controls.className = "queue-manage-controls";
+
+      const deleteBtn = document.createElement("button");
+      deleteBtn.className = "delete-queue-item-btn";
+      deleteBtn.type = "button";
+      deleteBtn.textContent = "حذف من الجدولة";
+      deleteBtn.onclick = () => deleteQueueItem(index);
+
+      controls.appendChild(deleteBtn);
+      card.appendChild(controls);
+    });
+
+    // fallback for queue cards that don't use .queue-item
+    const possibleCards = Array.from(document.querySelectorAll("div")).filter(el => {
+      const txt = el.textContent || "";
+      return txt.includes("مجدول تلقائياً") && !el.querySelector(".delete-queue-item-btn");
+    });
+
+    possibleCards.forEach((card, index)=>{
+      const realIndex = Math.min(index, (queue || []).length - 1);
+      if(realIndex < 0) return;
+
+      const controls = document.createElement("div");
+      controls.className = "queue-manage-controls";
+
+      const deleteBtn = document.createElement("button");
+      deleteBtn.className = "delete-queue-item-btn";
+      deleteBtn.type = "button";
+      deleteBtn.textContent = "حذف من الجدولة";
+      deleteBtn.onclick = () => deleteQueueItem(realIndex);
+
+      controls.appendChild(deleteBtn);
+      card.appendChild(controls);
+    });
+
+  }catch(err){
+    console.error("Queue controls inject error", err);
+  }
+}
+
+setInterval(injectQueueDeleteControls, 1200);
+/* ===== End v26 Queue Delete Controls ===== */

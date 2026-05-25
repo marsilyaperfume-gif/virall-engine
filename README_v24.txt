@@ -1,0 +1,1 @@
+v24: publish-reel no longer reads media container status. It waits and retries media_publish to avoid GraphMethodException 100/33.

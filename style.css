@@ -229,3 +229,59 @@
   backdrop-filter:blur(18px) saturate(170%) !important;
   -webkit-backdrop-filter:blur(18px) saturate(170%) !important;
 }
+
+
+/* v25 Cloudinary status visibility */
+.cloudinary-status{
+  display:inline-flex;
+  margin-top:8px;
+  padding:7px 12px;
+  border-radius:999px;
+  font-weight:800;
+  font-size:13px;
+  background:rgba(22,163,74,.16);
+  color:#86efac;
+  border:1px solid rgba(134,239,172,.35);
+}
+
+.cloudinary-status.failed{
+  background:rgba(220,38,38,.16);
+  color:#fca5a5;
+  border-color:rgba(252,165,165,.35);
+}
+
+
+/* v26 Queue Delete Controls */
+.queue-manage-controls{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-top:14px;
+}
+
+.delete-queue-item-btn,
+.clear-queue-btn{
+  border:none;
+  border-radius:14px;
+  padding:11px 18px;
+  cursor:pointer;
+  font-weight:900;
+  color:#fff;
+  transition:.2s ease;
+}
+
+.delete-queue-item-btn{
+  background:linear-gradient(135deg,#dc2626,#fb7185);
+  box-shadow:0 10px 28px rgba(220,38,38,.22);
+}
+
+.clear-queue-btn{
+  background:linear-gradient(135deg,#7f1d1d,#ef4444);
+  box-shadow:0 10px 28px rgba(239,68,68,.24);
+  margin-bottom:16px;
+}
+
+.delete-queue-item-btn:hover,
+.clear-queue-btn:hover{
+  transform:translateY(-1px) scale(1.02);
+}

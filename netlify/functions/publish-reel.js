@@ -14,6 +14,10 @@ function blobStore(name) {
   return getStore(name);
 }
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function graphPost(path, params) {
   const url = new URL(`https://graph.facebook.com/v21.0/${path}`);
   Object.entries(params || {}).forEach(([k, v]) => {
@@ -24,57 +28,52 @@ async function graphPost(path, params) {
   const data = await res.json();
 
   if (!res.ok) {
-    throw new Error(JSON.stringify(data));
+    const err = new Error(JSON.stringify(data));
+    err.graphData = data;
+    throw err;
   }
 
   return data;
 }
 
-async function graphGet(path, params) {
-  const url = new URL(`https://graph.facebook.com/v21.0/${path}`);
-  Object.entries(params || {}).forEach(([k, v]) => {
-    if (v !== undefined && v !== null) url.searchParams.set(k, v);
-  });
-
-  const res = await fetch(url);
-  const data = await res.json();
-
-  if (!res.ok) {
-    throw new Error(JSON.stringify(data));
-  }
-
-  return data;
+function isMediaNotReadyError(err) {
+  const msg = err && err.message ? err.message : "";
+  return (
+    msg.includes("Media ID is not available") ||
+    msg.includes("الوسائط غير جاهزة") ||
+    msg.includes('"code":9007') ||
+    msg.includes('"error_subcode":2207027')
+  );
 }
 
-async function waitForMediaContainer(creationId, accessToken) {
-  let lastStatus = null;
+async function publishWithRetry(instagramId, creationId, accessToken) {
+  let lastError = null;
 
-  for (let attempt = 1; attempt <= 60; attempt++) {
-    const status = await graphGet(creationId, {
-      fields: "status_code,status",
-      access_token: accessToken
-    });
+  // Instagram video containers often need time before media_publish.
+  // We do not call container status endpoint because some accounts return GraphMethodException 100/33.
+  await sleep(25000);
 
-    lastStatus = status;
+  for (let attempt = 1; attempt <= 12; attempt++) {
+    try {
+      return await graphPost(`${instagramId}/media_publish`, {
+        creation_id: creationId,
+        access_token: accessToken
+      });
+    } catch (err) {
+      lastError = err;
 
-    if (status.status_code === "FINISHED") {
-      return status;
+      if (!isMediaNotReadyError(err)) {
+        throw err;
+      }
+
+      await sleep(15000);
     }
-
-    if (status.status_code === "ERROR") {
-      throw new Error(JSON.stringify({
-        error: "Instagram media processing failed",
-        status
-      }));
-    }
-
-    await new Promise(resolve => setTimeout(resolve, 5000));
   }
 
   throw new Error(JSON.stringify({
-    error: "Media processing timeout",
-    message: "Instagram لم يجهز الفيديو خلال المهلة. جرّب فيديو أقصر أو انتظر وأعد المحاولة.",
-    lastStatus
+    error: "Instagram video is still not ready after retries",
+    message: "الفيديو لم يجهز داخل Instagram بعد عدة محاولات. جرّب فيديو أقصر أو انتظر دقيقة ثم أعد النشر.",
+    lastError: lastError ? lastError.message : null
   }));
 }
 
@@ -125,7 +124,6 @@ exports.handler = async function(event) {
       };
     }
 
-    // Step 1: create Reel media container
     const container = await graphPost(`${instagramId}/media`, {
       media_type: "REELS",
       video_url: videoUrl,
@@ -137,14 +135,7 @@ exports.handler = async function(event) {
       throw new Error(JSON.stringify({ error: "No creation container ID returned", container }));
     }
 
-    // Step 2: wait until Instagram finishes video processing
-    const finalStatus = await waitForMediaContainer(container.id, accessToken);
-
-    // Step 3: publish only after FINISHED
-    const published = await graphPost(`${instagramId}/media_publish`, {
-      creation_id: container.id,
-      access_token: accessToken
-    });
+    const published = await publishWithRetry(instagramId, container.id, accessToken);
 
     return {
       statusCode: 200,
@@ -152,7 +143,6 @@ exports.handler = async function(event) {
       body: JSON.stringify({
         ok: true,
         containerId: container.id,
-        finalStatus,
         published
       })
     };
@@ -163,7 +153,7 @@ exports.handler = async function(event) {
       headers: corsHeaders,
       body: JSON.stringify({
         error: err.message,
-        note: "إذا ظهر Media ID is not available فهذا يعني أن Instagram لم يجهز الفيديو بعد، وهذه النسخة تنتظر تلقائياً قبل النشر."
+        note: "v24 uses retry publishing without reading container status to avoid Authorization Error 100/33."
       })
     };
   }
