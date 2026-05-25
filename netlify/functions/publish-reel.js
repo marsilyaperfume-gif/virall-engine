@@ -1,4 +1,27 @@
 
+async function waitUntilReady(creationId, accessToken) {
+  for (let i = 0; i < 30; i++) {
+    const res = await fetch(
+      `https://graph.facebook.com/v21.0/${creationId}?fields=status_code,status&access_token=${accessToken}`
+    );
+    const data = await res.json();
+
+    if (data.status_code === "FINISHED") {
+      return true;
+    }
+
+    if (data.status_code === "ERROR") {
+      throw new Error(JSON.stringify(data));
+    }
+
+    await new Promise((r) => setTimeout(r, 5000));
+  }
+
+  throw new Error("Media processing timeout");
+}
+
+
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": process.env.FRONTEND_URL || "*",
   "Access-Control-Allow-Headers": "Content-Type",
