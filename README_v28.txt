@@ -1,0 +1,1 @@
+v28: Split publish into quick create + client polling complete to avoid Netlify inactivity timeout. Fixed queue delete controls.

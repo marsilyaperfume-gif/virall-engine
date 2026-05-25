@@ -24,10 +24,19 @@ async function graphPost(path, params) {
   const data = await res.json();
 
   if (!res.ok) {
-    throw new Error(JSON.stringify(data));
+    const err = new Error(JSON.stringify(data));
+    err.data = data;
+    throw err;
   }
 
   return data;
+}
+
+function mediaNotReady(msg) {
+  return String(msg || "").includes("Media ID is not available") ||
+         String(msg || "").includes("الوسائط غير جاهزة") ||
+         String(msg || "").includes('"code":9007') ||
+         String(msg || "").includes('"error_subcode":2207027');
 }
 
 exports.handler = async function(event) {
@@ -39,10 +48,10 @@ exports.handler = async function(event) {
 
   try {
     const body = JSON.parse(event.body || "{}");
-    const { accountId, videoUrl, caption } = body;
+    const { accountId, creationId } = body;
 
-    if (!accountId || !videoUrl) {
-      return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ error: "accountId and videoUrl are required" }) };
+    if (!accountId || !creationId) {
+      return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ error: "accountId and creationId are required" }) };
     }
 
     const store = blobStore("ig_accounts");
@@ -55,27 +64,30 @@ exports.handler = async function(event) {
     const accessToken = account.pageAccessToken;
     const instagramId = account.instagramId || account.id;
 
-    const container = await graphPost(`${instagramId}/media`, {
-      media_type: "REELS",
-      video_url: videoUrl,
-      caption: caption || "",
+    const published = await graphPost(`${instagramId}/media_publish`, {
+      creation_id: creationId,
       access_token: accessToken
     });
 
     return {
       statusCode: 200,
       headers: corsHeaders,
-      body: JSON.stringify({
-        ok: true,
-        pending: true,
-        accountId,
-        instagramId,
-        creationId: container.id,
-        message: "تم إنشاء الفيديو داخل Instagram. سيتم النشر بعد تجهيز الوسائط."
-      })
+      body: JSON.stringify({ ok: true, published })
     };
 
   } catch (err) {
+    if (mediaNotReady(err.message)) {
+      return {
+        statusCode: 202,
+        headers: corsHeaders,
+        body: JSON.stringify({
+          ok: false,
+          retry: true,
+          message: "Instagram لا يزال يجهز الفيديو. سيتم إعادة المحاولة."
+        })
+      };
+    }
+
     return {
       statusCode: 500,
       headers: corsHeaders,

@@ -1687,3 +1687,174 @@ function injectQueueDeleteControls(){
 
 setInterval(injectQueueDeleteControls, 1200);
 /* ===== End v26 Queue Delete Controls ===== */
+
+
+/* ===== v28 Async Instagram Publish + Queue Controls Fix ===== */
+function v28Sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+function v28FunctionsBase(){ return "/.netlify/functions"; }
+
+async function v28Json(res){
+  const text = await res.text();
+  try { return JSON.parse(text); }
+  catch(e){ throw new Error("Function returned non-JSON. " + text.slice(0,160)); }
+}
+
+async function v28PublishNow(accountId, videoUrl, caption){
+  const createRes = await fetch(v28FunctionsBase() + "/publish-reel", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body:JSON.stringify({ accountId, videoUrl, caption })
+  });
+
+  const created = await v28Json(createRes);
+  if(!createRes.ok) throw new Error(JSON.stringify(created));
+
+  if(!created.creationId){
+    throw new Error("No Instagram creationId returned");
+  }
+
+  for(let i=1; i<=16; i++){
+    await v28Sleep(i === 1 ? 25000 : 12000);
+
+    const finishRes = await fetch(v28FunctionsBase() + "/publish-complete", {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body:JSON.stringify({ accountId: created.accountId || accountId, creationId: created.creationId })
+    });
+
+    const finished = await v28Json(finishRes);
+
+    if(finishRes.ok && finished.ok){
+      return finished;
+    }
+
+    if(finishRes.status === 202 || finished.retry){
+      continue;
+    }
+
+    throw new Error(JSON.stringify(finished));
+  }
+
+  throw new Error("Instagram لم يجهز الفيديو بعد عدة محاولات. جرّب فيديو أقصر أو انتظر ثم أعد المحاولة.");
+}
+
+function v28FindVideoUrl(video){
+  return video.cloudinaryUrl || video.url || video.secure_url || "";
+}
+
+function v28FindOfficialAccount(){
+  return (accounts || []).find(a => a.official) || (accounts || [])[0];
+}
+
+function v28DeleteQueueItem(index){
+  if(!Array.isArray(queue)) return;
+  if(index < 0 || index >= queue.length) return;
+
+  if(!confirm("حذف هذا الفيديو من الجدولة؟")) return;
+
+  queue.splice(index, 1);
+  v28SaveQueue();
+
+  if(typeof renderAll === "function") renderAll();
+  setTimeout(v28InjectQueueControls, 300);
+}
+
+function v28ClearQueue(){
+  if(!Array.isArray(queue) || !queue.length){
+    alert("لا توجد فيديوهات في الجدولة");
+    return;
+  }
+
+  if(!confirm("حذف كل الفيديوهات من الجدولة؟")) return;
+
+  queue.length = 0;
+  v28SaveQueue();
+
+  if(typeof renderAll === "function") renderAll();
+  setTimeout(v28InjectQueueControls, 300);
+}
+
+function v28SaveQueue(){
+  try{
+    localStorage.setItem("virall_queue", JSON.stringify(queue || []));
+    localStorage.setItem("virall_queue_data", JSON.stringify(queue || []));
+    if(typeof saveAllData === "function") saveAllData();
+    if(window.__virallStore && typeof window.__virallStore.save === "function") window.__virallStore.save();
+    if(typeof v17SaveEverything === "function") v17SaveEverything();
+  }catch(e){ console.error(e); }
+}
+
+async function v28PublishVideoIndex(index){
+  const video = (videos || [])[index];
+  const account = v28FindOfficialAccount();
+
+  if(!video) return alert("الفيديو غير موجود");
+  if(!account) return alert("لا يوجد حساب Instagram مربوط");
+  const videoUrl = v28FindVideoUrl(video);
+  if(!videoUrl) return alert("لا يوجد رابط فيديو Cloudinary");
+
+  try{
+    alert("بدأ النشر. قد يحتاج Instagram من 30 ثانية إلى دقيقتين لتجهيز الفيديو.");
+    const result = await v28PublishNow(account.id || account.instagramId, videoUrl, video.caption || video.hook || "");
+    alert("تم النشر بنجاح");
+    return result;
+  }catch(err){
+    alert("فشل النشر: " + (err.message || err));
+  }
+}
+
+function v28InjectQueueControls(){
+  try{
+    document.querySelectorAll(".queue-item").forEach((card, index)=>{
+      if(card.querySelector(".v28-delete-queue")) return;
+      const btn=document.createElement("button");
+      btn.className="v28-delete-queue";
+      btn.textContent="حذف من الجدولة";
+      btn.onclick=()=>v28DeleteQueueItem(index);
+      card.appendChild(btn);
+    });
+
+    const queueArea = Array.from(document.querySelectorAll("div,section")).find(el => (el.textContent||"").includes("Autopilot Queue"));
+    if(queueArea && !queueArea.querySelector(".v28-clear-queue")){
+      const btn=document.createElement("button");
+      btn.className="v28-clear-queue";
+      btn.textContent="حذف كل الجدولة";
+      btn.onclick=v28ClearQueue;
+      queueArea.prepend(btn);
+    }
+
+    // fallback for cards with scheduled text
+    const cards = Array.from(document.querySelectorAll("div")).filter(el => (el.textContent||"").includes("مجدول تلقائياً"));
+    cards.forEach((card, idx)=>{
+      if(card.querySelector(".v28-delete-queue")) return;
+      const btn=document.createElement("button");
+      btn.className="v28-delete-queue";
+      btn.textContent="حذف من الجدولة";
+      btn.onclick=()=>v28DeleteQueueItem(idx);
+      card.appendChild(btn);
+    });
+  }catch(e){ console.error(e); }
+}
+
+function v28InjectPublishButtons(){
+  try{
+    document.querySelectorAll(".video-item").forEach((card, index)=>{
+      const btns = Array.from(card.querySelectorAll("button"));
+      const existing = btns.find(b => (b.textContent||"").includes("نشر الآن"));
+      if(existing && !existing.dataset.v28Bound){
+        existing.dataset.v28Bound="1";
+        existing.onclick=(e)=>{ e.preventDefault(); v28PublishVideoIndex(index); };
+      }
+    });
+  }catch(e){ console.error(e); }
+}
+
+setInterval(v28InjectQueueControls, 1200);
+setInterval(v28InjectPublishButtons, 1200);
+/* ===== End v28 ===== */
+
+
+window.v28PublishNow = v28PublishNow;
+window.v28DeleteQueueItem = v28DeleteQueueItem;
+window.v28ClearQueue = v28ClearQueue;
