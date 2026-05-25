@@ -1,4 +1,57 @@
 
+/* ===== Persistent Storage System ===== */
+const STORAGE_KEYS = {
+  accounts: "virall_accounts",
+  videos: "virall_videos",
+  queue: "virall_queue",
+  settings: "virall_settings"
+};
+
+function saveAllData(){
+  try{
+    localStorage.setItem(STORAGE_KEYS.accounts, JSON.stringify(accounts || []));
+    localStorage.setItem(STORAGE_KEYS.videos, JSON.stringify(videos || []));
+    localStorage.setItem(STORAGE_KEYS.queue, JSON.stringify(queue || []));
+    localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(settings || {}));
+  }catch(err){
+    console.error("Persistence save error", err);
+  }
+}
+
+function loadSavedData(){
+  try{
+    const savedAccounts = JSON.parse(localStorage.getItem(STORAGE_KEYS.accounts) || "[]");
+    const savedVideos = JSON.parse(localStorage.getItem(STORAGE_KEYS.videos) || "[]");
+    const savedQueue = JSON.parse(localStorage.getItem(STORAGE_KEYS.queue) || "[]");
+    const savedSettings = JSON.parse(localStorage.getItem(STORAGE_KEYS.settings) || "{}");
+
+    if(Array.isArray(savedAccounts) && savedAccounts.length){
+      accounts = savedAccounts;
+    }
+
+    if(Array.isArray(savedVideos) && savedVideos.length){
+      videos = savedVideos;
+    }
+
+    if(Array.isArray(savedQueue) && savedQueue.length){
+      queue = savedQueue;
+    }
+
+    if(savedSettings && typeof savedSettings === "object"){
+      settings = {...settings, ...savedSettings};
+    }
+
+  }catch(err){
+    console.error("Persistence load error", err);
+  }
+}
+
+setInterval(saveAllData, 2500);
+
+window.addEventListener("beforeunload", saveAllData);
+/* ===== End Persistence ===== */
+
+
 
 async function publishUploadedVideoNow(index){
   const video = videos[index];
@@ -305,7 +358,9 @@ async function publishUploadedVideoNow(index){
     if ($("email").value.trim() === EMAIL && $("password").value.trim() === PASS) {
       $("loginScreen").classList.add("hidden");
       $("app").classList.remove("hidden");
-      renderAll();
+      loadSavedData();
+renderAll();
+saveAllData();
     } else {
       alert("بيانات الدخول غير صحيحة");
     }
@@ -367,6 +422,7 @@ async function publishUploadedVideoNow(index){
     selected = Math.max(0, videos.length - videoFiles.length);
     scanNewVideos(videos.slice(selected));
     renderAll();
+saveAllData();
     loadEditor();
     openTab("videos");
     alert("تم رفع " + videoFiles.length + " فيديو بنجاح");
@@ -554,6 +610,7 @@ async function publishUploadedVideoNow(index){
     if (selected >= videos.length) selected = Math.max(0, videos.length - 1);
 
     renderAll();
+saveAllData();
 
     if (!videos.length) {
       const editor = $("editorVideo");
@@ -639,6 +696,7 @@ async function publishUploadedVideoNow(index){
       });
 
       renderAll();
+saveAllData();
       alert("تم تحديث الحسابات الرسمية: " + official.length);
     } catch (err) {
       console.error(err);
@@ -665,6 +723,7 @@ async function publishUploadedVideoNow(index){
     $("accUser").value = "";
     $("accLink").value = "";
     renderAll();
+saveAllData();
   }
 
 
@@ -693,6 +752,7 @@ async function publishUploadedVideoNow(index){
     };
 
     renderAll();
+saveAllData();
   }
 
   function deleteAccount(index) {
@@ -708,6 +768,7 @@ async function publishUploadedVideoNow(index){
     queue = queue.filter(q => q.account !== account.name);
 
     renderAll();
+saveAllData();
   }
 
 
@@ -765,6 +826,7 @@ async function publishUploadedVideoNow(index){
     });
 
     renderAll();
+saveAllData();
     openTab("queue");
   }
 
@@ -819,6 +881,7 @@ async function publishUploadedVideoNow(index){
       item.status = "published";
       item.publishedAt = new Date().toISOString();
       renderAll();
+saveAllData();
       alert("تم إرسال النشر إلى Instagram بنجاح.");
     } catch (err) {
       console.error(err);
@@ -1186,6 +1249,7 @@ async function publishUploadedVideoNow(index){
     setupPublishNowDelegation();
     loadSettingsToUI();
     renderAll();
+saveAllData();
     if (new URLSearchParams(window.location.search).get("connected")) {
       loadOfficialAccounts();
       history.replaceState({}, "", window.location.pathname);
