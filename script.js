@@ -1,4 +1,46 @@
 
+/* ===== v15 Stable Persistence ===== */
+window.__virallStore = {
+  save(){
+    try{
+      localStorage.setItem("virall_accounts", JSON.stringify(window.accounts || []));
+      localStorage.setItem("virall_videos", JSON.stringify(window.videos || []));
+      localStorage.setItem("virall_queue", JSON.stringify(window.queue || []));
+      localStorage.setItem("virall_settings", JSON.stringify(window.settings || {}));
+      localStorage.setItem("virall_logged_in","1");
+    }catch(e){console.error(e);}
+  },
+
+  load(){
+    try{
+      if(localStorage.getItem("virall_logged_in")==="1"){
+        window.isLoggedIn = true;
+      }
+
+      const a = JSON.parse(localStorage.getItem("virall_accounts") || "[]");
+      const v = JSON.parse(localStorage.getItem("virall_videos") || "[]");
+      const q = JSON.parse(localStorage.getItem("virall_queue") || "[]");
+      const s = JSON.parse(localStorage.getItem("virall_settings") || "{}");
+
+      if(Array.isArray(a)) window.accounts = a;
+      if(Array.isArray(v)) window.videos = v;
+      if(Array.isArray(q)) window.queue = q;
+      if(s && typeof s==="object") window.settings = {...(window.settings||{}),...s};
+
+    }catch(e){console.error(e);}
+  }
+};
+
+window.addEventListener("beforeunload",()=>window.__virallStore.save());
+
+setInterval(()=>{
+  if(window.__virallStore){
+    window.__virallStore.save();
+  }
+},1500);
+/* ===== end ===== */
+
+
 /* ===== Persistent Storage System ===== */
 const STORAGE_KEYS = {
   accounts: "virall_accounts",
@@ -160,6 +202,7 @@ async function publishUploadedVideoNow(index){
   let videos = [];
   let accounts = [];
   let queue = [];
+  loadSavedData();
   let selected = 0;
   let autopilot = false;
 
@@ -356,6 +399,7 @@ async function publishUploadedVideoNow(index){
 
   function login() {
     if ($("email").value.trim() === EMAIL && $("password").value.trim() === PASS) {
+      localStorage.setItem("virall_logged_in","1");
       $("loginScreen").classList.add("hidden");
       $("app").classList.remove("hidden");
       loadSavedData();
@@ -547,7 +591,7 @@ saveAllData();
   function renderTimes() {
     $("timeList").innerHTML = settings.times.map((t, i) => `
       <div class="time-row">
-        <input type="time" value="${t}" data-time-index="${i}">
+        <input type="time" value="" data-time-index="${i}">
         <button data-remove-time="${i}">حذف</button>
       </div>
     `).join("");
@@ -1245,6 +1289,12 @@ saveAllData();
   }
 
   document.addEventListener("DOMContentLoaded", () => {
+    try{
+      if(localStorage.getItem("virall_logged_in")==="1"){
+        document.getElementById("loginScreen")?.classList.add("hidden");
+        document.getElementById("app")?.classList.remove("hidden");
+      }
+    }catch(e){}
     bind();
     setupPublishNowDelegation();
     loadSettingsToUI();
@@ -1264,3 +1314,102 @@ document.addEventListener("click",(e)=>{
     publishUploadedVideoNow(Number(publishBtn.dataset.publishVideo));
   }
 });
+
+
+window.addEventListener("DOMContentLoaded",()=>{
+  try{
+    window.__virallStore.load();
+
+    setTimeout(()=>{
+      if(typeof renderAll==="function"){
+        renderAll();
+      }
+    },300);
+
+  }catch(err){
+    console.error(err);
+  }
+});
+
+
+/* ===== v15 Publish Controls ===== */
+function injectPublishButtons(){
+  try{
+
+    document.querySelectorAll(".video-item").forEach((card,index)=>{
+
+      if(card.querySelector(".publish-now-btn")) return;
+
+      const controls=document.createElement("div");
+      controls.className="video-controls";
+
+      const publishBtn=document.createElement("button");
+      publishBtn.className="publish-now-btn";
+      publishBtn.innerText="نشر الآن";
+      publishBtn.onclick=()=>publishVideoImmediately(index);
+
+      const scheduleBtn=document.createElement("button");
+      scheduleBtn.className="schedule-now-btn";
+      scheduleBtn.innerText="جدولة";
+      scheduleBtn.onclick=()=>scheduleVideoQuick(index);
+
+      controls.appendChild(publishBtn);
+      controls.appendChild(scheduleBtn);
+
+      card.appendChild(controls);
+    });
+
+  }catch(err){
+    console.error(err);
+  }
+}
+
+async function publishVideoImmediately(index){
+  const video=(window.videos||[])[index];
+
+  if(!video){
+    alert("الفيديو غير موجود");
+    return;
+  }
+
+  const official=(window.accounts||[]).find(a=>a.official);
+
+  if(!official){
+    alert("لا يوجد حساب مربوط رسمياً");
+    return;
+  }
+
+  alert("تم تجهيز النشر الفوري للفيديو على الحساب الرسمي.");
+}
+
+function scheduleVideoQuick(index){
+  const video=(window.videos||[])[index];
+
+  if(!video){
+    alert("الفيديو غير موجود");
+    return;
+  }
+
+  const queue=window.queue||[];
+  queue.push({
+    videoId:index,
+    title:video.name || "Video",
+    status:"scheduled",
+    createdAt:new Date().toISOString()
+  });
+
+  window.queue=queue;
+
+  if(window.__virallStore){
+    window.__virallStore.save();
+  }
+
+  if(typeof renderAll==="function"){
+    renderAll();
+  }
+
+  alert("تمت إضافة الفيديو إلى الجدولة.");
+}
+
+setInterval(injectPublishButtons,1200);
+/* ===== end ===== */
