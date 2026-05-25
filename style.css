@@ -204,3 +204,28 @@
   box-shadow:0 10px 40px rgba(0,0,0,.18) !important;
 }
 
+
+
+/* v18 stable controls */
+.video-controls,.queue-controls{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-top:12px;
+}
+.publish-now-btn,.schedule-now-btn{
+  border:0;
+  border-radius:14px;
+  padding:11px 17px;
+  color:#fff;
+  font-weight:900;
+  cursor:pointer;
+}
+.publish-now-btn{background:linear-gradient(135deg,#7c3cff,#1598ff);}
+.schedule-now-btn{background:linear-gradient(135deg,#f6a623,#ff5e62);}
+.hook,.hook-card,.hook.glass{
+  background:linear-gradient(135deg,rgba(255,255,255,.34),rgba(255,255,255,.10)) !important;
+  border:1px solid rgba(255,255,255,.34) !important;
+  backdrop-filter:blur(18px) saturate(170%) !important;
+  -webkit-backdrop-filter:blur(18px) saturate(170%) !important;
+}

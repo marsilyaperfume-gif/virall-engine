@@ -14,8 +14,8 @@
     <div class="mark">M</div>
     <h1>MARRSILE <span>AUTO REELS V10.5</span></h1>
     <p>نسخة نظيفة ومفحوصة: رفع فيديوهات + توليد هوكات + حفظ إعدادات + Autopilot.</p>
-    <input id="email" value="info@marrsile.com"/>
-    <input id="password" value="Mo774853" type="password"/>
+    <input id="email" placeholder="Email"/>
+    <input id="password" placeholder="Password" type="password"/>
     <button id="loginBtn">دخول</button>
   </div>
 </section>
@@ -334,9 +334,9 @@
         <div class="card">
           <h3>Storage</h3>
           <p>للنشر الحقيقي نحتاج Cloudinary/S3 لتحويل الفيديو إلى رابط عام.</p>
-          <input placeholder="Cloudinary Cloud Name"/>
-          <input placeholder="Upload Preset"/>
-          <button class="secondary full">حفظ</button>
+          <input id="cloudinaryCloudName" placeholder="Cloudinary Cloud Name"/>
+          <input id="cloudinaryUploadPreset" placeholder="Upload Preset"/>
+          <button class="secondary full" id="saveStorageBtn">حفظ</button>
         </div>
       </div>
     </section>

@@ -1,196 +1,4 @@
 
-/* ===== v17 Meta Persistence Fix ===== */
-window.accounts = window.accounts || [];
-window.videos = window.videos || [];
-window.queue = window.queue || [];
-window.settings = window.settings || {};
-
-const V17_KEYS = {
-  ACCOUNTS:"virall_meta_accounts",
-  VIDEOS:"virall_uploaded_videos",
-  QUEUE:"virall_queue_data",
-  SETTINGS:"virall_settings_data",
-  AUTH:"virall_auth_session"
-};
-
-function v17SaveEverything(){
-  try{
-    localStorage.setItem(V17_KEYS.ACCOUNTS, JSON.stringify(window.accounts || []));
-    localStorage.setItem(V17_KEYS.VIDEOS, JSON.stringify(window.videos || []));
-    localStorage.setItem(V17_KEYS.QUEUE, JSON.stringify(window.queue || []));
-    localStorage.setItem(V17_KEYS.SETTINGS, JSON.stringify(window.settings || {}));
-    localStorage.setItem(V17_KEYS.AUTH, "1");
-  }catch(err){
-    console.error("save failed", err);
-  }
-}
-
-function v17RestoreEverything(){
-  try{
-
-    const savedAccounts = JSON.parse(localStorage.getItem(V17_KEYS.ACCOUNTS) || "[]");
-    const savedVideos = JSON.parse(localStorage.getItem(V17_KEYS.VIDEOS) || "[]");
-    const savedQueue = JSON.parse(localStorage.getItem(V17_KEYS.QUEUE) || "[]");
-    const savedSettings = JSON.parse(localStorage.getItem(V17_KEYS.SETTINGS) || "{}");
-
-    if(Array.isArray(savedAccounts) && savedAccounts.length){
-      window.accounts = savedAccounts;
-    }
-
-    if(Array.isArray(savedVideos) && savedVideos.length){
-      window.videos = savedVideos;
-    }
-
-    if(Array.isArray(savedQueue) && savedQueue.length){
-      window.queue = savedQueue;
-    }
-
-    if(savedSettings && typeof savedSettings === "object"){
-      window.settings = {...window.settings, ...savedSettings};
-    }
-
-    if(localStorage.getItem(V17_KEYS.AUTH)==="1"){
-      window.isLoggedIn = true;
-    }
-
-  }catch(err){
-    console.error("restore failed", err);
-  }
-}
-
-window.addEventListener("beforeunload", ()=>{
-  v17SaveEverything();
-});
-
-document.addEventListener("visibilitychange", ()=>{
-  if(document.visibilityState==="hidden"){
-    v17SaveEverything();
-  }
-});
-
-setInterval(()=>{
-  v17SaveEverything();
-},1000);
-
-window.addEventListener("DOMContentLoaded", ()=>{
-  v17RestoreEverything();
-
-  setTimeout(()=>{
-    try{
-      if(typeof renderAll==="function"){
-        renderAll();
-      }
-
-      // restore connected accounts UI immediately
-      document.querySelectorAll(".official-status").forEach(el=>{
-        el.innerHTML="Officially Connected";
-      });
-
-    }catch(err){
-      console.error(err);
-    }
-  },300);
-});
-
-/* ===== End v17 ===== */
-
-
-/* ===== v15 Stable Persistence ===== */
-window.__virallStore = {
-  save(){
-    try{
-      localStorage.setItem("virall_accounts", JSON.stringify(window.accounts || []));
-      localStorage.setItem("virall_videos", JSON.stringify(window.videos || []));
-      localStorage.setItem("virall_queue", JSON.stringify(window.queue || []));
-      localStorage.setItem("virall_settings", JSON.stringify(window.settings || {}));
-      localStorage.setItem("virall_logged_in","1");
-    }catch(e){console.error(e);}
-  },
-
-  load(){
-    try{
-      if(localStorage.getItem("virall_logged_in")==="1"){
-        window.isLoggedIn = true;
-      }
-
-      const a = JSON.parse(localStorage.getItem("virall_accounts") || "[]");
-      const v = JSON.parse(localStorage.getItem("virall_videos") || "[]");
-      const q = JSON.parse(localStorage.getItem("virall_queue") || "[]");
-      const s = JSON.parse(localStorage.getItem("virall_settings") || "{}");
-
-      if(Array.isArray(a)) window.accounts = a;
-      if(Array.isArray(v)) window.videos = v;
-      if(Array.isArray(q)) window.queue = q;
-      if(s && typeof s==="object") window.settings = {...(window.settings||{}),...s};
-
-    }catch(e){console.error(e);}
-  }
-};
-
-window.addEventListener("beforeunload",()=>window.__virallStore.save());
-
-setInterval(()=>{
-  if(window.__virallStore){
-    window.__virallStore.save();
-  }
-},1500);
-/* ===== end ===== */
-
-
-/* ===== Persistent Storage System ===== */
-const STORAGE_KEYS = {
-  accounts: "virall_accounts",
-  videos: "virall_videos",
-  queue: "virall_queue",
-  settings: "virall_settings"
-};
-
-function saveAllData(){
-  try{
-    localStorage.setItem(STORAGE_KEYS.accounts, JSON.stringify(accounts || []));
-    localStorage.setItem(STORAGE_KEYS.videos, JSON.stringify(videos || []));
-    localStorage.setItem(STORAGE_KEYS.queue, JSON.stringify(queue || []));
-    localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(settings || {}));
-  }catch(err){
-    console.error("Persistence save error", err);
-  }
-}
-
-function loadSavedData(){
-  try{
-    const savedAccounts = JSON.parse(localStorage.getItem(STORAGE_KEYS.accounts) || "[]");
-    const savedVideos = JSON.parse(localStorage.getItem(STORAGE_KEYS.videos) || "[]");
-    const savedQueue = JSON.parse(localStorage.getItem(STORAGE_KEYS.queue) || "[]");
-    const savedSettings = JSON.parse(localStorage.getItem(STORAGE_KEYS.settings) || "{}");
-
-    if(Array.isArray(savedAccounts) && savedAccounts.length){
-      accounts = savedAccounts;
-    }
-
-    if(Array.isArray(savedVideos) && savedVideos.length){
-      videos = savedVideos;
-    }
-
-    if(Array.isArray(savedQueue) && savedQueue.length){
-      queue = savedQueue;
-    }
-
-    if(savedSettings && typeof savedSettings === "object"){
-      settings = {...settings, ...savedSettings};
-    }
-
-  }catch(err){
-    console.error("Persistence load error", err);
-  }
-}
-
-setInterval(saveAllData, 2500);
-
-window.addEventListener("beforeunload", saveAllData);
-/* ===== End Persistence ===== */
-
-
-
 async function publishUploadedVideoNow(index){
   const video = videos[index];
   if(!video){
@@ -291,7 +99,9 @@ async function publishUploadedVideoNow(index){
     backendUrl: "/.netlify/functions",
     delayMode: "10-30",
     delayMin: 10,
-    delayMax: 30
+    delayMax: 30,
+    cloudinaryCloudName: "",
+    cloudinaryUploadPreset: ""
   };
 
   let settings = loadSettings();
@@ -300,6 +110,173 @@ async function publishUploadedVideoNow(index){
   let queue = [];
   let selected = 0;
   let autopilot = false;
+
+  const APP_STORE_KEY = "marrsile_growth_engine_v18";
+
+  function safeParseStore() {
+    try {
+      return JSON.parse(localStorage.getItem(APP_STORE_KEY) || "{}") || {};
+    } catch {
+      return {};
+    }
+  }
+
+  function persistAll() {
+    try {
+      const safeVideos = videos.map(v => ({
+        id: v.id,
+        name: v.name,
+        size: v.size,
+        type: v.type,
+        url: v.url || "",
+        publicUrl: v.publicUrl || "",
+        cloudinaryPublicId: v.cloudinaryPublicId || "",
+        hook: v.hook,
+        caption: v.caption,
+        status: v.status,
+        compatibility: v.compatibility,
+        compatibilityLabel: v.compatibilityLabel,
+        repairStatus: v.repairStatus,
+        postedTo: v.postedTo || []
+      }));
+      localStorage.setItem(APP_STORE_KEY, JSON.stringify({
+        loggedIn: $("app") && !$("app").classList.contains("hidden"),
+        settings,
+        accounts,
+        videos: safeVideos,
+        queue,
+        selected,
+        savedAt: new Date().toISOString()
+      }));
+    } catch (err) {
+      console.error("فشل حفظ البيانات", err);
+    }
+  }
+
+  function hydrateAll() {
+    const saved = safeParseStore();
+    if (saved.settings && typeof saved.settings === "object") {
+      settings = { ...settings, ...saved.settings };
+    }
+    if (Array.isArray(saved.accounts)) {
+      accounts = saved.accounts;
+    }
+    if (Array.isArray(saved.videos)) {
+      videos = saved.videos;
+    }
+    if (Array.isArray(saved.queue)) {
+      queue = saved.queue;
+    }
+    if (typeof saved.selected === "number") {
+      selected = saved.selected;
+    }
+    if (saved.loggedIn) {
+      $("loginScreen").classList.add("hidden");
+      $("app").classList.remove("hidden");
+    }
+  }
+
+  function persistAuth(loggedIn) {
+    const saved = safeParseStore();
+    saved.loggedIn = !!loggedIn;
+    localStorage.setItem(APP_STORE_KEY, JSON.stringify(saved));
+  }
+
+  async function uploadToCloudinary(file) {
+    const cloudName = (settings.cloudinaryCloudName || "").trim();
+    const uploadPreset = (settings.cloudinaryUploadPreset || "").trim();
+
+    if (!cloudName || !uploadPreset) {
+      return {
+        url: URL.createObjectURL(file),
+        publicUrl: "",
+        cloudinaryPublicId: "",
+        localOnly: true
+      };
+    }
+
+    const form = new FormData();
+    form.append("file", file);
+    form.append("upload_preset", uploadPreset);
+    form.append("folder", "marrsile-reels");
+
+    const endpoint = `https://api.cloudinary.com/v1_1/${encodeURIComponent(cloudName)}/video/upload`;
+    const res = await fetch(endpoint, { method: "POST", body: form });
+    const data = await res.json();
+
+    if (!res.ok || !data.secure_url) {
+      throw new Error(data.error?.message || "فشل رفع الفيديو إلى Cloudinary");
+    }
+
+    return {
+      url: data.secure_url,
+      publicUrl: data.secure_url,
+      cloudinaryPublicId: data.public_id || "",
+      localOnly: false
+    };
+  }
+
+  async function publishVideoNow(index) {
+    const video = videos[index];
+    if (!video) return alert("الفيديو غير موجود");
+
+    const officialAccounts = accounts.filter(a => a.official);
+    if (!officialAccounts.length) return alert("لا يوجد حساب رسمي مربوط");
+
+    const account = officialAccounts[0];
+    const videoUrl = video.publicUrl || video.url;
+
+    if (!videoUrl || String(videoUrl).startsWith("blob:")) {
+      return alert("لا يمكن النشر الآن لأن الفيديو ليس له رابط عام. احفظ Cloudinary ثم أعد رفع الفيديو.");
+    }
+
+    try {
+      const res = await fetch(functionsBase().replace(/\/$/, "") + "/publish-reel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountId: account.id,
+          videoUrl,
+          caption: video.caption || video.hook || settings.captionFooter || ""
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "فشل النشر");
+
+      video.status = "تم إرسال النشر";
+      video.postedTo = [...(video.postedTo || []), account.user || account.name];
+      persistAll();
+      renderAll();
+      alert("تم إرسال الفيديو إلى Instagram للنشر.");
+    } catch (err) {
+      console.error(err);
+      alert("فشل النشر: " + (err.message || err));
+    }
+  }
+
+  function scheduleVideoNow(index) {
+    const video = videos[index];
+    if (!video) return alert("الفيديو غير موجود");
+
+    const acc = accounts.find(a => a.official) || accounts[0];
+    if (!acc) return alert("أضف حساباً أولاً");
+
+    queue.push({
+      videoId: video.id,
+      video: video.name,
+      accountId: acc.id,
+      account: acc.name,
+      market: acc.market || "رسمي",
+      hook: video.hook,
+      caption: video.caption,
+      time: new Date(Date.now() + 5 * 60 * 1000).toLocaleTimeString("ar", { hour: "2-digit", minute: "2-digit" }),
+      status: "مجدول يدوياً"
+    });
+    persistAll();
+    renderAll();
+    alert("تمت جدولة الفيديو.");
+  }
+
 
   const gulfHooks = [
     "إذا سألوك وش حاط… لا تستغرب 😮‍💨",
@@ -469,8 +446,18 @@ async function publishUploadedVideoNow(index){
     $("saveBackendBtn").addEventListener("click", () => {
       settings.backendUrl = $("backendUrl").value.trim();
       saveSettings();
+      persistAll();
       alert("تم حفظ رابط Backend محلياً");
     });
+    if ($("saveStorageBtn")) {
+      $("saveStorageBtn").addEventListener("click", () => {
+        settings.cloudinaryCloudName = $("cloudinaryCloudName").value.trim();
+        settings.cloudinaryUploadPreset = $("cloudinaryUploadPreset").value.trim();
+        saveSettings();
+        persistAll();
+        alert("تم حفظ بيانات Cloudinary");
+      });
+    }
     $("scanVideosBtn").addEventListener("click", scanAllVideos);
     $("repairVideosBtn").addEventListener("click", repairIncompatibleVideos);
     $("forceRepairBtn").addEventListener("click", forceRepairAllVideos);
@@ -496,9 +483,9 @@ async function publishUploadedVideoNow(index){
     if ($("email").value.trim() === EMAIL && $("password").value.trim() === PASS) {
       $("loginScreen").classList.add("hidden");
       $("app").classList.remove("hidden");
-      loadSavedData();
-renderAll();
-saveAllData();
+      hydrateAll();
+      persistAuth(true);
+      renderAll();
     } else {
       alert("بيانات الدخول غير صحيحة");
     }
@@ -532,38 +519,46 @@ saveAllData();
     addFiles(Array.from(e.target.files || []));
   }
 
-  function addFiles(files) {
+  async function addFiles(files) {
     const videoFiles = files.filter(f => f.type && f.type.startsWith("video/"));
     if (!videoFiles.length) {
       alert("لم يتم اختيار فيديوهات مدعومة. جرب MP4 أو MOV.");
       return;
     }
 
-    videoFiles.forEach(file => {
-      const url = URL.createObjectURL(file);
-      videos.push({
-        id: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random())),
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        url,
-        hook: makeHook(file.name),
-        caption: makeCaption("عام الخليج"),
-        status: "جاهز",
-        compatibility: "pending",
-        compatibilityLabel: "قيد الفحص",
-        repairStatus: "not_needed",
-        postedTo: []
-      });
-    });
+    for (const file of videoFiles) {
+      try {
+        const uploaded = await uploadToCloudinary(file);
+        videos.push({
+          id: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random())),
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          url: uploaded.url,
+          publicUrl: uploaded.publicUrl,
+          cloudinaryPublicId: uploaded.cloudinaryPublicId,
+          hook: makeHook(file.name),
+          caption: makeCaption("عام الخليج"),
+          status: uploaded.localOnly ? "محلي فقط - اربط Cloudinary للنشر" : "جاهز للنشر",
+          compatibility: "pending",
+          compatibilityLabel: uploaded.localOnly ? "محلي" : "مرفوع",
+          repairStatus: "not_needed",
+          postedTo: []
+        });
+        persistAll();
+      } catch (err) {
+        console.error(err);
+        alert("فشل رفع " + file.name + ": " + (err.message || err));
+      }
+    }
 
     selected = Math.max(0, videos.length - videoFiles.length);
     scanNewVideos(videos.slice(selected));
     renderAll();
-saveAllData();
+    persistAll();
     loadEditor();
     openTab("videos");
-    alert("تم رفع " + videoFiles.length + " فيديو بنجاح");
+    alert("تم رفع " + videoFiles.length + " فيديو");
   }
 
   function clean(parts) {
@@ -616,6 +611,8 @@ saveAllData();
     if ($("backendUrl")) $("backendUrl").value = settings.backendUrl || "";
     if ($("autoRepair")) $("autoRepair").checked = settings.autoRepair !== false;
     if ($("backendUrl")) $("backendUrl").value = settings.backendUrl || "/.netlify/functions";
+    if ($("cloudinaryCloudName")) $("cloudinaryCloudName").value = settings.cloudinaryCloudName || "";
+    if ($("cloudinaryUploadPreset")) $("cloudinaryUploadPreset").value = settings.cloudinaryUploadPreset || "";
     $("dailyCount").textContent = settings.daily;
     renderTimes();
     updateLabels();
@@ -666,6 +663,8 @@ saveAllData();
     if ($("backendUrl")) $("backendUrl").value = settings.backendUrl || "";
     if ($("autoRepair")) $("autoRepair").checked = settings.autoRepair !== false;
     if ($("backendUrl")) $("backendUrl").value = settings.backendUrl || "/.netlify/functions";
+    if ($("cloudinaryCloudName")) $("cloudinaryCloudName").value = settings.cloudinaryCloudName || "";
+    if ($("cloudinaryUploadPreset")) $("cloudinaryUploadPreset").value = settings.cloudinaryUploadPreset || "";
     $("dailyCount").textContent = settings.daily;
     saveSettings();
   }
@@ -708,14 +707,18 @@ saveAllData();
         <b>${escapeHtml(v.name)}</b>
         <p>${escapeHtml(v.hook)}</p>
         <span class="muted">${v.status}</span>
-        <button class="delete-video-btn" data-delete-video="${i}" type="button">حذف الفيديو</button>
+        <div class="video-controls">
+          <button class="publish-now-btn" data-publish-video="${i}" type="button">نشر الآن</button>
+          <button class="schedule-now-btn" data-schedule-video="${i}" type="button">جدولة</button>
+          <button class="delete-video-btn" data-delete-video="${i}" type="button">حذف الفيديو</button>
+        </div>
         <span class="compat ${v.compatibility === "compatible" ? "ok" : v.compatibility === "needs_repair" ? "warn" : v.compatibility === "fixed" ? "ok" : "bad"}">${escapeHtml(v.compatibilityLabel || "قيد الفحص")}</span>${v.repairReason ? `<small class="muted">${escapeHtml(v.repairReason)}</small>` : ""}
       </div>
     `).join("") : `<div class="video-item">ارفع الفيديوهات فقط، والباقي تلقائي.</div>`;
 
     document.querySelectorAll("[data-video-index]").forEach(item => {
       item.addEventListener("click", (e) => {
-        if (e.target && e.target.dataset && e.target.dataset.deleteVideo !== undefined) return;
+        if (e.target.closest("button")) return;
         selected = Number(item.dataset.videoIndex);
         renderVideos();
         loadEditor();
@@ -726,6 +729,20 @@ saveAllData();
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         deleteVideo(Number(btn.dataset.deleteVideo));
+      });
+    });
+
+    document.querySelectorAll("[data-publish-video]").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        publishVideoNow(Number(btn.dataset.publishVideo));
+      });
+    });
+
+    document.querySelectorAll("[data-schedule-video]").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        scheduleVideoNow(Number(btn.dataset.scheduleVideo));
       });
     });
   }
@@ -748,7 +765,7 @@ saveAllData();
     if (selected >= videos.length) selected = Math.max(0, videos.length - 1);
 
     renderAll();
-saveAllData();
+persistAll();
 
     if (!videos.length) {
       const editor = $("editorVideo");
@@ -834,7 +851,7 @@ saveAllData();
       });
 
       renderAll();
-saveAllData();
+persistAll();
       alert("تم تحديث الحسابات الرسمية: " + official.length);
     } catch (err) {
       console.error(err);
@@ -861,7 +878,7 @@ saveAllData();
     $("accUser").value = "";
     $("accLink").value = "";
     renderAll();
-saveAllData();
+persistAll();
   }
 
 
@@ -890,7 +907,7 @@ saveAllData();
     };
 
     renderAll();
-saveAllData();
+persistAll();
   }
 
   function deleteAccount(index) {
@@ -906,7 +923,7 @@ saveAllData();
     queue = queue.filter(q => q.account !== account.name);
 
     renderAll();
-saveAllData();
+persistAll();
   }
 
 
@@ -964,7 +981,7 @@ saveAllData();
     });
 
     renderAll();
-saveAllData();
+persistAll();
     openTab("queue");
   }
 
@@ -1019,7 +1036,7 @@ saveAllData();
       item.status = "published";
       item.publishedAt = new Date().toISOString();
       renderAll();
-saveAllData();
+persistAll();
       alert("تم إرسال النشر إلى Instagram بنجاح.");
     } catch (err) {
       console.error(err);
@@ -1034,14 +1051,21 @@ saveAllData();
 
 
   function renderQueue() {
-    $("queueList").innerHTML = queue.length ? queue.map(q => `
+    $("queueList").innerHTML = queue.length ? queue.map((q, i) => `
       <div class="queue-item">
-        <b>${escapeHtml(q.video)}</b>
-        <span class="muted">${escapeHtml(q.account)} · ${escapeHtml(q.market)} · ${escapeHtml(q.time)}</span>
-        <p>${escapeHtml(q.hook)}</p>
-        <span class="warn">${escapeHtml(q.status)}</span>
+        <b>${escapeHtml(q.video || q.title || "فيديو")}</b>
+        <span class="muted">${escapeHtml(q.account || "")} · ${escapeHtml(q.market || "")} · ${escapeHtml(q.time || "")}</span>
+        <p>${escapeHtml(q.hook || "")}</p>
+        <span class="warn">${escapeHtml(q.status || "مجدول")}</span>
+        <div class="queue-controls">
+          <button class="publish-now-btn" data-publish-now="${i}" type="button">نشر الآن</button>
+        </div>
       </div>
     `).join("") : `<div class="queue-item">شغّل Autopilot ليبني الجدول تلقائياً.</div>`;
+
+    document.querySelectorAll("[data-publish-now]").forEach(btn => {
+      btn.addEventListener("click", () => publishNowFromQueue(Number(btn.dataset.publishNow)));
+    });
   }
 
   function renderHookFactory() {
@@ -1385,131 +1409,12 @@ saveAllData();
   document.addEventListener("DOMContentLoaded", () => {
     bind();
     setupPublishNowDelegation();
+    hydrateAll();
     loadSettingsToUI();
     renderAll();
-saveAllData();
     if (new URLSearchParams(window.location.search).get("connected")) {
       loadOfficialAccounts();
       history.replaceState({}, "", window.location.pathname);
     }
   });
 })();
-
-document.addEventListener("click",(e)=>{
-  const publishBtn = e.target.closest("[data-publish-video]");
-  if(publishBtn){
-    e.preventDefault();
-    publishUploadedVideoNow(Number(publishBtn.dataset.publishVideo));
-  }
-});
-
-
-window.addEventListener("DOMContentLoaded",()=>{
-  try{
-    window.__virallStore.load();
-
-    setTimeout(()=>{
-      if(typeof renderAll==="function"){
-        renderAll();
-      }
-    },300);
-
-  }catch(err){
-    console.error(err);
-  }
-});
-
-
-/* ===== v15 Publish Controls ===== */
-function injectPublishButtons(){
-  try{
-
-    document.querySelectorAll(".video-item").forEach((card,index)=>{
-
-      if(card.querySelector(".publish-now-btn")) return;
-
-      const controls=document.createElement("div");
-      controls.className="video-controls";
-
-      const publishBtn=document.createElement("button");
-      publishBtn.className="publish-now-btn";
-      publishBtn.innerText="نشر الآن";
-      publishBtn.onclick=()=>publishVideoImmediately(index);
-
-      const scheduleBtn=document.createElement("button");
-      scheduleBtn.className="schedule-now-btn";
-      scheduleBtn.innerText="جدولة";
-      scheduleBtn.onclick=()=>scheduleVideoQuick(index);
-
-      controls.appendChild(publishBtn);
-      controls.appendChild(scheduleBtn);
-
-      card.appendChild(controls);
-    });
-
-  }catch(err){
-    console.error(err);
-  }
-}
-
-async function publishVideoImmediately(index){
-  const video=(window.videos||[])[index];
-
-  if(!video){
-    alert("الفيديو غير موجود");
-    return;
-  }
-
-  const official=(window.accounts||[]).find(a=>a.official);
-
-  if(!official){
-    alert("لا يوجد حساب مربوط رسمياً");
-    return;
-  }
-
-  alert("تم تجهيز النشر الفوري للفيديو على الحساب الرسمي.");
-}
-
-function scheduleVideoQuick(index){
-  const video=(window.videos||[])[index];
-
-  if(!video){
-    alert("الفيديو غير موجود");
-    return;
-  }
-
-  const queue=window.queue||[];
-  queue.push({
-    videoId:index,
-    title:video.name || "Video",
-    status:"scheduled",
-    createdAt:new Date().toISOString()
-  });
-
-  window.queue=queue;
-
-  if(window.__virallStore){
-    window.__virallStore.save();
-  }
-
-  if(typeof renderAll==="function"){
-    renderAll();
-  }
-
-  alert("تمت إضافة الفيديو إلى الجدولة.");
-}
-
-setInterval(injectPublishButtons,1200);
-/* ===== end ===== */
-
-
-// auto-save after account connections
-setInterval(()=>{
-  try{
-    const hasOfficial = (window.accounts || []).some(a=>a.official);
-    if(hasOfficial){
-      v17SaveEverything();
-    }
-  }catch(err){}
-},1200);
-
