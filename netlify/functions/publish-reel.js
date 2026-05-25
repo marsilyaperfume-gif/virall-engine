@@ -1,48 +1,10 @@
 
-async function waitUntilReady(creationId, accessToken) {
-  for (let i = 0; i < 30; i++) {
-    const res = await fetch(
-      `https://graph.facebook.com/v21.0/${creationId}?fields=status_code,status&access_token=${accessToken}`
-    );
-    const data = await res.json();
-
-    if (data.status_code === "FINISHED") {
-      return true;
-    }
-
-    if (data.status_code === "ERROR") {
-      throw new Error(JSON.stringify(data));
-    }
-
-    await new Promise((r) => setTimeout(r, 5000));
-  }
-
-  throw new Error("Media processing timeout");
-}
-
-
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": process.env.FRONTEND_URL || "*",
   "Access-Control-Allow-Headers": "Content-Type",
   "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
   "Content-Type": "application/json"
 };
-
-function parseCookies(cookieHeader = "") {
-  return Object.fromEntries(cookieHeader.split(";").map(v => v.trim()).filter(Boolean).map(v => {
-    const i = v.indexOf("=");
-    return [v.slice(0, i), decodeURIComponent(v.slice(i + 1))];
-  }));
-}
-
-function frontendUrl() {
-  return process.env.FRONTEND_URL || "https://virall-gcc.netlify.app";
-}
-
-function callbackUrl() {
-  return process.env.META_REDIRECT_URI || `${frontendUrl()}/.netlify/functions/instagram-callback`;
-}
 
 function blobStore(name) {
   const { getStore } = require("@netlify/blobs");
@@ -52,52 +14,157 @@ function blobStore(name) {
   return getStore(name);
 }
 
-async function graphGet(path, params) {
+async function graphPost(path, params) {
   const url = new URL(`https://graph.facebook.com/v21.0/${path}`);
-  Object.entries(params || {}).forEach(([k,v]) => url.searchParams.set(k, v));
-  const res = await fetch(url);
+  Object.entries(params || {}).forEach(([k, v]) => {
+    if (v !== undefined && v !== null) url.searchParams.set(k, v);
+  });
+
+  const res = await fetch(url, { method: "POST" });
   const data = await res.json();
-  if (!res.ok) throw new Error(JSON.stringify(data));
+
+  if (!res.ok) {
+    throw new Error(JSON.stringify(data));
+  }
+
   return data;
 }
 
-async function graphPost(path, params) {
+async function graphGet(path, params) {
   const url = new URL(`https://graph.facebook.com/v21.0/${path}`);
-  Object.entries(params || {}).forEach(([k,v]) => url.searchParams.set(k, v));
-  const res = await fetch(url, { method: "POST" });
+  Object.entries(params || {}).forEach(([k, v]) => {
+    if (v !== undefined && v !== null) url.searchParams.set(k, v);
+  });
+
+  const res = await fetch(url);
   const data = await res.json();
-  if (!res.ok) throw new Error(JSON.stringify(data));
+
+  if (!res.ok) {
+    throw new Error(JSON.stringify(data));
+  }
+
   return data;
+}
+
+async function waitForMediaContainer(creationId, accessToken) {
+  let lastStatus = null;
+
+  for (let attempt = 1; attempt <= 60; attempt++) {
+    const status = await graphGet(creationId, {
+      fields: "status_code,status",
+      access_token: accessToken
+    });
+
+    lastStatus = status;
+
+    if (status.status_code === "FINISHED") {
+      return status;
+    }
+
+    if (status.status_code === "ERROR") {
+      throw new Error(JSON.stringify({
+        error: "Instagram media processing failed",
+        status
+      }));
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 5000));
+  }
+
+  throw new Error(JSON.stringify({
+    error: "Media processing timeout",
+    message: "Instagram لم يجهز الفيديو خلال المهلة. جرّب فيديو أقصر أو انتظر وأعد المحاولة.",
+    lastStatus
+  }));
 }
 
 exports.handler = async function(event) {
-  if (event.httpMethod === "OPTIONS") return { statusCode: 204, headers: corsHeaders };
-  if (event.httpMethod !== "POST") return { statusCode: 405, headers: corsHeaders, body: JSON.stringify({ error: "Method not allowed" }) };
+  if (event.httpMethod === "OPTIONS") {
+    return { statusCode: 204, headers: corsHeaders };
+  }
+
+  if (event.httpMethod !== "POST") {
+    return {
+      statusCode: 405,
+      headers: corsHeaders,
+      body: JSON.stringify({ error: "Method not allowed" })
+    };
+  }
+
   try {
     const body = JSON.parse(event.body || "{}");
     const { accountId, videoUrl, caption } = body;
-    if (!accountId || !videoUrl || !caption) return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ error: "accountId, videoUrl and caption are required" }) };
+
+    if (!accountId || !videoUrl) {
+      return {
+        statusCode: 400,
+        headers: corsHeaders,
+        body: JSON.stringify({ error: "accountId and videoUrl are required" })
+      };
+    }
+
     const store = blobStore("ig_accounts");
     const account = await store.get(accountId, { type: "json" });
-    if (!account) return { statusCode: 404, headers: corsHeaders, body: JSON.stringify({ error: "Instagram account not found" }) };
 
-    const container = await graphPost(`${account.instagramId}/media`, {
+    if (!account) {
+      return {
+        statusCode: 404,
+        headers: corsHeaders,
+        body: JSON.stringify({ error: "Instagram account not found. أعد ربط الحساب من الموقع." })
+      };
+    }
+
+    const accessToken = account.pageAccessToken;
+    const instagramId = account.instagramId || account.id;
+
+    if (!accessToken || !instagramId) {
+      return {
+        statusCode: 400,
+        headers: corsHeaders,
+        body: JSON.stringify({ error: "Stored account is missing token or Instagram ID. أعد ربط الحساب." })
+      };
+    }
+
+    // Step 1: create Reel media container
+    const container = await graphPost(`${instagramId}/media`, {
       media_type: "REELS",
       video_url: videoUrl,
-      caption,
-      access_token: account.pageAccessToken
+      caption: caption || "",
+      access_token: accessToken
     });
-    const published = await graphPost(`${account.instagramId}/media_publish`, {
+
+    if (!container.id) {
+      throw new Error(JSON.stringify({ error: "No creation container ID returned", container }));
+    }
+
+    // Step 2: wait until Instagram finishes video processing
+    const finalStatus = await waitForMediaContainer(container.id, accessToken);
+
+    // Step 3: publish only after FINISHED
+    const published = await graphPost(`${instagramId}/media_publish`, {
       creation_id: container.id,
-      access_token: account.pageAccessToken
+      access_token: accessToken
     });
-    return { statusCode: 200, headers: corsHeaders, body: JSON.stringify({ ok: true, published }) };
+
+    return {
+      statusCode: 200,
+      headers: corsHeaders,
+      body: JSON.stringify({
+        ok: true,
+        containerId: container.id,
+        finalStatus,
+        published
+      })
+    };
+
   } catch (err) {
-    return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({
+    return {
+      statusCode: 500,
+      headers: corsHeaders,
+      body: JSON.stringify({
         error: err.message,
-        nextStep: err.message && err.message.includes("instagram_content_publish")
-          ? "الربط يعمل، لكن التوكن لا يملك صلاحية النشر. لا تضف صلاحية النشر إلى OAuth لأنها تكسر تسجيل الدخول. يجب تفعيل/اعتماد صلاحية النشر من Meta أو استخدام Flow نشر معتمد."
-          : undefined
-      }) };
+        note: "إذا ظهر Media ID is not available فهذا يعني أن Instagram لم يجهز الفيديو بعد، وهذه النسخة تنتظر تلقائياً قبل النشر."
+      })
+    };
   }
 };
