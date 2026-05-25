@@ -51,6 +51,7 @@ function buildOAuthUrl(state) {
   const appId = process.env.META_APP_ID;
   const scopes = [
     "instagram_basic",
+    "instagram_content_publish",
     "pages_show_list",
     "pages_read_engagement",
     "business_management"

@@ -9,6 +9,7 @@ const corsHeaders = {
 exports.handler = async function() {
   const scopes = [
     "instagram_basic",
+    "instagram_content_publish",
     "pages_show_list",
     "pages_read_engagement",
     "business_management"
@@ -19,7 +20,7 @@ exports.handler = async function() {
     headers: corsHeaders,
     body: JSON.stringify({
       ok: true,
-      message: "OAuth scopes are clean. Publish permission is not requested in login dialog.",
+      message: "OAuth scopes are clean. Publish permission is requested in login dialog.",
       appId: process.env.META_APP_ID || null,
       redirectUri: process.env.META_REDIRECT_URI || null,
       scopes,

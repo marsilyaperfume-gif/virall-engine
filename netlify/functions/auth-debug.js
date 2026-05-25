@@ -51,6 +51,7 @@ exports.handler = async function(event) {
   const appId = process.env.META_APP_ID || "";
   const scopes = [
     "instagram_basic",
+    "instagram_content_publish",
     "pages_show_list",
     "pages_read_engagement",
     "business_management"
@@ -66,10 +67,10 @@ exports.handler = async function(event) {
     headers: corsHeaders,
     body: JSON.stringify({
       ok: true,
-      flow: "Facebook Login + Instagram Graph API — OAuth connection only, publish permission not requested in login dialog",
+      flow: "Facebook Login + Instagram Graph API — OAuth includes publish permission",
       appId,
       redirectUriUsed: callbackUrl(),
-      requiredMetaSetting: "Paste redirectUriUsed exactly in Facebook Login for Business > Settings > Valid OAuth Redirect URIs. OAuth scopes intentionally exclude publish permissions to satisfy Meta.",
+      requiredMetaSetting: "Paste redirectUriUsed exactly in Facebook Login for Business > Settings > Valid OAuth Redirect URIs. OAuth scopes include instagram_content_publish for publishing.",
       scopes,
       oauthUrl: url.toString()
     }, null, 2)
