@@ -49,7 +49,12 @@ async function graphPost(path, params) {
 
 function buildOAuthUrl(state) {
   const appId = process.env.META_APP_ID;
-  const scopes = ["instagram_basic","instagram_business_content_publish","pages_show_list","pages_read_engagement","business_management"].join(",");
+  const scopes = [
+    "instagram_basic",
+    "pages_show_list",
+    "pages_read_engagement",
+    "business_management"
+  ].join(",");
   const url = new URL("https://www.facebook.com/v21.0/dialog/oauth");
   url.searchParams.set("client_id", appId);
   url.searchParams.set("redirect_uri", callbackUrl());

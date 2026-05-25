@@ -123,7 +123,25 @@ v13.3 Facebook Login Correct Flow:
 - Added auth-debug endpoint to show exact redirect_uri.
 
 
-v13.4 Business Publish Scope Fix:
-- Replaced invalid OAuth scope instagram_content_publish.
-- New scope: instagram_business_content_publish.
-- Kept Facebook Login + Instagram Graph API flow unchanged.
+v13.6 Meta OAuth Compliant:
+- Updated OAuth scopes according to Meta behavior.
+- OAuth login now requests connection/account discovery scopes only:
+  instagram_basic
+  pages_show_list
+  pages_read_engagement
+  business_management
+- Removed instagram_content_publish and instagram_business_content_publish from the login dialog.
+- Kept publish-reel function in place for the next publishing phase.
+- Added clearer auth-debug output.
+
+
+v13.7 OAuth Scope Cleanup:
+- OAuth login requests only account discovery scopes.
+- Auth scopes:
+  instagram_basic
+  pages_show_list
+  pages_read_engagement
+  business_management
+- Added /.netlify/functions/scope-check.
+- Improved Invalid OAuth state message.
+- After deploying, do not reuse old Meta error pages or old OAuth links. Start from the website button only.

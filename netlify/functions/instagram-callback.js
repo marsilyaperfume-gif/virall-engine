@@ -52,7 +52,7 @@ exports.handler = async function(event) {
     const { code, state } = event.queryStringParameters || {};
     const cookies = parseCookies(event.headers.cookie || "");
     if (!code || !state || cookies.ig_oauth_state !== state) {
-      return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ error: "Invalid OAuth state" }) };
+      return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ error: "Invalid OAuth state - ابدأ الربط من زر Connect Instagram داخل الموقع ولا تفتح callback مباشرة", expectedCookie: Boolean(cookies.ig_oauth_state), receivedState: Boolean(state) }) };
     }
     const appId = process.env.META_APP_ID;
     const appSecret = process.env.META_APP_SECRET;
