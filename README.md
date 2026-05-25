@@ -145,3 +145,11 @@ v13.7 OAuth Scope Cleanup:
 - Added /.netlify/functions/scope-check.
 - Improved Invalid OAuth state message.
 - After deploying, do not reuse old Meta error pages or old OAuth links. Start from the website button only.
+
+
+v13.8 Publish Now + Luxury Glass:
+- Added Publish Now button to Autopilot Queue items.
+- Publish Now calls publish-reel when the video has a public Storage URL.
+- Shows clear message when video is local blob and Storage is not configured yet.
+- Refreshed UI with luxury transparent glassmorphism style.
+- No OAuth or account connection changes.

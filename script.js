@@ -147,6 +147,16 @@
     localStorage.setItem("marrsile_v105_settings", JSON.stringify(settings));
   }
 
+  function setupPublishNowDelegation() {
+    document.addEventListener("click", (e) => {
+      const btn = e.target && e.target.closest ? e.target.closest("[data-publish-now]") : null;
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      publishNowFromQueue(Number(btn.dataset.publishNow));
+    });
+  }
+
   function bind() {
     $("loginBtn").addEventListener("click", login);
     $("uploadBtn").addEventListener("click", pickVideos);
@@ -691,6 +701,70 @@
     openTab("queue");
   }
 
+
+  async function publishNowFromQueue(index) {
+    const item = queue[index];
+    if (!item) return;
+
+    const ok = confirm("هل تريد نشر هذا الفيديو الآن على الحساب المحدد؟");
+    if (!ok) return;
+
+    const btns = document.querySelectorAll(`[data-publish-now="${index}"]`);
+    btns.forEach(b => {
+      b.disabled = true;
+      b.textContent = "جاري النشر...";
+    });
+
+    try {
+      const account = accounts.find(a => a.name === item.account || a.user === item.account || a.id === item.accountId);
+      const video = videos.find(v => v.name === item.video || v.id === item.videoId);
+
+      if (!account || !account.official) {
+        alert("هذا العنصر غير مربوط بحساب رسمي. اختر حساب Officially Connected.");
+        return;
+      }
+
+      if (!video || !video.url) {
+        alert("لم يتم العثور على الفيديو داخل المتصفح. أعد رفع الفيديو ثم جرّب النشر.");
+        return;
+      }
+
+      // ملاحظة مهمة: Instagram API يحتاج video_url عام ومباشر من Storage.
+      // في هذه المرحلة إذا كان الفيديو blob محلي، نعرض رسالة واضحة بدل الفشل الصامت.
+      if (video.url.startsWith("blob:")) {
+        alert("النشر الآن يحتاج رابط فيديو عام من Storage مثل Cloudinary/S3. الفيديو الحالي موجود محلياً داخل المتصفح فقط. الربط والحسابات جاهزة، والخطوة القادمة هي إضافة Storage Upload.");
+        return;
+      }
+
+      const res = await fetch((settings.backendUrl || "/.netlify/functions").replace(/\/$/, "") + "/publish-reel", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          accountId: account.id,
+          videoUrl: video.url,
+          caption: item.caption || item.hook || ""
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "فشل النشر");
+
+      item.status = "published";
+      item.publishedAt = new Date().toISOString();
+      renderAll();
+      alert("تم إرسال النشر إلى Instagram بنجاح.");
+    } catch (err) {
+      console.error(err);
+      alert("فشل النشر الآن: " + (err.message || err));
+    } finally {
+      btns.forEach(b => {
+        b.disabled = false;
+        b.textContent = "نشر الآن";
+      });
+    }
+  }
+
+
   function renderQueue() {
     $("queueList").innerHTML = queue.length ? queue.map(q => `
       <div class="queue-item">
@@ -1042,6 +1116,7 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     bind();
+    setupPublishNowDelegation();
     loadSettingsToUI();
     renderAll();
     if (new URLSearchParams(window.location.search).get("connected")) {
