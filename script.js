@@ -1,3 +1,70 @@
+
+
+async function publishUploadedVideoNow(index){
+  const video = videos[index];
+  if(!video){
+    alert("الفيديو غير موجود");
+    return;
+  }
+
+  const officialAccounts = accounts.filter(a => a.official);
+  if(!officialAccounts.length){
+    alert("لا يوجد حساب Officially Connected");
+    return;
+  }
+
+  const selected = officialAccounts[0];
+
+  if(!confirm(`نشر الفيديو الآن على ${selected.name || selected.user || "Instagram"} ؟`)){
+    return;
+  }
+
+  const btns = document.querySelectorAll(`[data-publish-video="${index}"]`);
+  btns.forEach(b=>{
+    b.disabled=true;
+    b.textContent="جاري النشر...";
+  });
+
+  try{
+
+    if(video.url && String(video.url).startsWith("blob:")){
+      alert("الفيديو مرفوع محلياً فقط حالياً. يجب ربط Storage عام للفيديو قبل النشر الفعلي على Instagram.");
+      return;
+    }
+
+    const backendBase = (settings.backendUrl || "/.netlify/functions").replace(/\/$/, "");
+
+    const res = await fetch(backendBase + "/publish-reel",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json"
+      },
+      body:JSON.stringify({
+        accountId:selected.id,
+        videoUrl:video.url,
+        caption:video.caption || ""
+      })
+    });
+
+    const data = await res.json();
+
+    if(!res.ok){
+      throw new Error(data.error || "فشل النشر");
+    }
+
+    alert("تم إرسال الفيديو للنشر بنجاح");
+  }catch(err){
+    console.error(err);
+    alert("فشل النشر: " + (err.message || err));
+  }finally{
+    btns.forEach(b=>{
+      b.disabled=false;
+      b.textContent="نشر الآن";
+    });
+  }
+}
+
+
 (() => {
   "use strict";
 
@@ -1125,3 +1192,11 @@
     }
   });
 })();
+
+document.addEventListener("click",(e)=>{
+  const publishBtn = e.target.closest("[data-publish-video]");
+  if(publishBtn){
+    e.preventDefault();
+    publishUploadedVideoNow(Number(publishBtn.dataset.publishVideo));
+  }
+});
