@@ -1,4 +1,100 @@
 
+/* ===== v17 Meta Persistence Fix ===== */
+window.accounts = window.accounts || [];
+window.videos = window.videos || [];
+window.queue = window.queue || [];
+window.settings = window.settings || {};
+
+const V17_KEYS = {
+  ACCOUNTS:"virall_meta_accounts",
+  VIDEOS:"virall_uploaded_videos",
+  QUEUE:"virall_queue_data",
+  SETTINGS:"virall_settings_data",
+  AUTH:"virall_auth_session"
+};
+
+function v17SaveEverything(){
+  try{
+    localStorage.setItem(V17_KEYS.ACCOUNTS, JSON.stringify(window.accounts || []));
+    localStorage.setItem(V17_KEYS.VIDEOS, JSON.stringify(window.videos || []));
+    localStorage.setItem(V17_KEYS.QUEUE, JSON.stringify(window.queue || []));
+    localStorage.setItem(V17_KEYS.SETTINGS, JSON.stringify(window.settings || {}));
+    localStorage.setItem(V17_KEYS.AUTH, "1");
+  }catch(err){
+    console.error("save failed", err);
+  }
+}
+
+function v17RestoreEverything(){
+  try{
+
+    const savedAccounts = JSON.parse(localStorage.getItem(V17_KEYS.ACCOUNTS) || "[]");
+    const savedVideos = JSON.parse(localStorage.getItem(V17_KEYS.VIDEOS) || "[]");
+    const savedQueue = JSON.parse(localStorage.getItem(V17_KEYS.QUEUE) || "[]");
+    const savedSettings = JSON.parse(localStorage.getItem(V17_KEYS.SETTINGS) || "{}");
+
+    if(Array.isArray(savedAccounts) && savedAccounts.length){
+      window.accounts = savedAccounts;
+    }
+
+    if(Array.isArray(savedVideos) && savedVideos.length){
+      window.videos = savedVideos;
+    }
+
+    if(Array.isArray(savedQueue) && savedQueue.length){
+      window.queue = savedQueue;
+    }
+
+    if(savedSettings && typeof savedSettings === "object"){
+      window.settings = {...window.settings, ...savedSettings};
+    }
+
+    if(localStorage.getItem(V17_KEYS.AUTH)==="1"){
+      window.isLoggedIn = true;
+    }
+
+  }catch(err){
+    console.error("restore failed", err);
+  }
+}
+
+window.addEventListener("beforeunload", ()=>{
+  v17SaveEverything();
+});
+
+document.addEventListener("visibilitychange", ()=>{
+  if(document.visibilityState==="hidden"){
+    v17SaveEverything();
+  }
+});
+
+setInterval(()=>{
+  v17SaveEverything();
+},1000);
+
+window.addEventListener("DOMContentLoaded", ()=>{
+  v17RestoreEverything();
+
+  setTimeout(()=>{
+    try{
+      if(typeof renderAll==="function"){
+        renderAll();
+      }
+
+      // restore connected accounts UI immediately
+      document.querySelectorAll(".official-status").forEach(el=>{
+        el.innerHTML="Officially Connected";
+      });
+
+    }catch(err){
+      console.error(err);
+    }
+  },300);
+});
+
+/* ===== End v17 ===== */
+
+
 /* ===== v15 Stable Persistence ===== */
 window.__virallStore = {
   save(){
@@ -202,7 +298,6 @@ async function publishUploadedVideoNow(index){
   let videos = [];
   let accounts = [];
   let queue = [];
-  loadSavedData();
   let selected = 0;
   let autopilot = false;
 
@@ -399,7 +494,6 @@ async function publishUploadedVideoNow(index){
 
   function login() {
     if ($("email").value.trim() === EMAIL && $("password").value.trim() === PASS) {
-      localStorage.setItem("virall_logged_in","1");
       $("loginScreen").classList.add("hidden");
       $("app").classList.remove("hidden");
       loadSavedData();
@@ -1289,12 +1383,6 @@ saveAllData();
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    try{
-      if(localStorage.getItem("virall_logged_in")==="1"){
-        document.getElementById("loginScreen")?.classList.add("hidden");
-        document.getElementById("app")?.classList.remove("hidden");
-      }
-    }catch(e){}
     bind();
     setupPublishNowDelegation();
     loadSettingsToUI();
@@ -1413,3 +1501,15 @@ function scheduleVideoQuick(index){
 
 setInterval(injectPublishButtons,1200);
 /* ===== end ===== */
+
+
+// auto-save after account connections
+setInterval(()=>{
+  try{
+    const hasOfficial = (window.accounts || []).some(a=>a.official);
+    if(hasOfficial){
+      v17SaveEverything();
+    }
+  }catch(err){}
+},1200);
+
