@@ -70,15 +70,11 @@ exports.handler = async function(event) {
     });
     return { statusCode: 200, headers: corsHeaders, body: JSON.stringify({ ok: true, published }) };
   } catch (err) {
-    return { 
-      statusCode: 500, 
-      headers: corsHeaders, 
-      body: JSON.stringify({ 
+    return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({
         error: err.message,
-        hint: err.message && err.message.includes("instagram_content_publish") 
-          ? "أعد ربط الحساب من الموقع بعد رفع هذه النسخة حتى يحصل التوكن الجديد على صلاحية instagram_content_publish." 
+        nextStep: err.message && err.message.includes("instagram_content_publish")
+          ? "الربط يعمل، لكن التوكن لا يملك صلاحية النشر. لا تضف صلاحية النشر إلى OAuth لأنها تكسر تسجيل الدخول. يجب تفعيل/اعتماد صلاحية النشر من Meta أو استخدام Flow نشر معتمد."
           : undefined
-      }) 
-    };
+      }) };
   }
 };

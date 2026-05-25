@@ -155,13 +155,8 @@ v13.8 Publish Now + Luxury Glass:
 - No OAuth or account connection changes.
 
 
-v19 Publish Permission Fix:
-- Root cause: OAuth was not requesting instagram_content_publish.
-- Added instagram_content_publish back to Facebook Login OAuth scopes.
-- Added /.netlify/functions/token-debug to verify the stored page token scopes.
-- After deploying this version, delete/reconnect Instagram accounts so new tokens include publish permission.
-
-
-v19.1 Handler Fix:
-- Fixed auth-instagram Netlify export handler.
-- Keeps instagram_content_publish in OAuth scopes.
+v19.2 Stable Login Restore:
+- Restored working Facebook Login OAuth scopes.
+- Removed publish permission from OAuth so login does not break.
+- Publish endpoint now returns a clear Meta permission message instead of breaking OAuth.
+- Do not add instagram_content_publish to OAuth URL again.
