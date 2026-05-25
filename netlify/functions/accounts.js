@@ -25,59 +25,47 @@ function blobStore(name) {
   const { getStore } = require("@netlify/blobs");
   const siteID = process.env.NETLIFY_SITE_ID || process.env.SITE_ID;
   const token = process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_AUTH_TOKEN;
-
-  if (siteID && token) {
-    return getStore({ name, siteID, token });
-  }
-
+  if (siteID && token) return getStore({ name, siteID, token });
   return getStore(name);
 }
 
-async function getJson(url, options = {}) {
-  const res = await fetch(url, options);
+async function graphGet(path, params) {
+  const url = new URL(`https://graph.facebook.com/v21.0/${path}`);
+  Object.entries(params || {}).forEach(([k,v]) => url.searchParams.set(k, v));
+  const res = await fetch(url);
   const data = await res.json();
   if (!res.ok) throw new Error(JSON.stringify(data));
   return data;
 }
 
-async function graphGet(path, params) {
-  const url = new URL(`https://graph.instagram.com/v21.0/${path}`);
-  Object.entries(params || {}).forEach(([k,v]) => url.searchParams.set(k, v));
-  return getJson(url);
-}
-
 async function graphPost(path, params) {
-  const url = new URL(`https://graph.instagram.com/v21.0/${path}`);
+  const url = new URL(`https://graph.facebook.com/v21.0/${path}`);
   Object.entries(params || {}).forEach(([k,v]) => url.searchParams.set(k, v));
-  return getJson(url, { method: "POST" });
+  const res = await fetch(url, { method: "POST" });
+  const data = await res.json();
+  if (!res.ok) throw new Error(JSON.stringify(data));
+  return data;
 }
 
 exports.handler = async function(event) {
   if (event.httpMethod === "OPTIONS") return { statusCode: 204, headers: corsHeaders };
-
   try {
     const store = blobStore("ig_accounts");
     const listed = await store.list();
     const accounts = [];
-
     for (const blob of listed.blobs || []) {
       if (blob.key === "health-check") continue;
       const item = await store.get(blob.key, { type: "json" });
-      if (item) {
-        accounts.push({
-          id: item.instagramId,
-          instagramId: item.instagramId,
-          username: item.username,
-          name: item.name,
-          accountType: item.accountType,
-          profilePicture: item.profilePicture,
-          followersCount: item.followersCount,
-          mediaCount: item.mediaCount,
-          connectedAt: item.connectedAt
-        });
-      }
+      if (item) accounts.push({
+        id: item.instagramId,
+        instagramId: item.instagramId,
+        username: item.username,
+        name: item.name,
+        pageName: item.pageName,
+        profilePicture: item.profilePicture,
+        connectedAt: item.connectedAt
+      });
     }
-
     return { statusCode: 200, headers: corsHeaders, body: JSON.stringify({ accounts }) };
   } catch (err) {
     return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ error: err.message }) };

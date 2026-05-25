@@ -118,12 +118,6 @@ v13.1 Netlify Blobs Manual Config:
   META_REDIRECT_URI=https://virall-gcc.netlify.app/.netlify/functions/instagram-callback
 
 
-v13.2 Instagram Login API Fix:
-- Replaced old Facebook Login scopes with Instagram API with Instagram Login scopes.
-- New scopes:
-  instagram_business_basic
-  instagram_business_content_publish
-- OAuth now starts from instagram.com/oauth/authorize.
-- Callback exchanges code through api.instagram.com/oauth/access_token.
-- Accounts are stored directly as Instagram accounts in Netlify Blobs.
-- Publishing uses graph.instagram.com with the Instagram access token.
+v13.3 Facebook Login Correct Flow:
+- Restored Facebook Login + Instagram Graph API flow.
+- Added auth-debug endpoint to show exact redirect_uri.
