@@ -121,3 +121,9 @@ v13.1 Netlify Blobs Manual Config:
 v13.3 Facebook Login Correct Flow:
 - Restored Facebook Login + Instagram Graph API flow.
 - Added auth-debug endpoint to show exact redirect_uri.
+
+
+v13.4 Business Publish Scope Fix:
+- Replaced invalid OAuth scope instagram_content_publish.
+- New scope: instagram_business_content_publish.
+- Kept Facebook Login + Instagram Graph API flow unchanged.
