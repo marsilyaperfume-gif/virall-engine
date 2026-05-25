@@ -1,4 +1,20 @@
 
+/* ===== v27 Netlify Functions Path Fix ===== */
+function getFunctionsBase(){
+  return "/.netlify/functions";
+}
+
+async function safeJsonResponse(res){
+  const text = await res.text();
+  try{
+    return JSON.parse(text);
+  }catch(err){
+    throw new Error("Function returned non-JSON response. تأكد أن المسار هو /.netlify/functions وليس .netlify/functions. Response starts with: " + text.slice(0,120));
+  }
+}
+/* ===== End v27 ===== */
+
+
 async function publishUploadedVideoNow(index){
   const video = videos[index];
   if(!video){
@@ -31,7 +47,7 @@ async function publishUploadedVideoNow(index){
       return;
     }
 
-    const backendBase = (settings.backendUrl || "/.netlify/functions").replace(/\/$/, "");
+    const backendBase = getFunctionsBase();
 
     const res = await fetch(backendBase + "/publish-reel",{
       method:"POST",
@@ -45,7 +61,7 @@ async function publishUploadedVideoNow(index){
       })
     });
 
-    const data = await res.json();
+    const data = await safeJsonResponse(res);
 
     if(!res.ok){
       throw new Error(data.error || "فشل النشر");
@@ -202,7 +218,7 @@ async function publishUploadedVideoNow(index){
 
     const endpoint = `https://api.cloudinary.com/v1_1/${encodeURIComponent(cloudName)}/video/upload`;
     const res = await fetch(endpoint, { method: "POST", body: form });
-    const data = await res.json();
+    const data = await safeJsonResponse(res);
 
     if (!res.ok || !data.secure_url) {
       throw new Error(data.error?.message || "فشل رفع الفيديو إلى Cloudinary");
@@ -240,7 +256,7 @@ async function publishUploadedVideoNow(index){
           caption: video.caption || video.hook || settings.captionFooter || ""
         })
       });
-      const data = await res.json();
+      const data = await safeJsonResponse(res);
       if (!res.ok) throw new Error(data.error || "فشل النشر");
 
       video.status = "تم إرسال النشر";
@@ -834,7 +850,7 @@ persistAll();
     try {
       const res = await fetch(functionsBase().replace(/\/$/, "") + "/accounts");
       if (!res.ok) throw new Error("فشل جلب الحسابات الرسمية");
-      const data = await res.json();
+      const data = await safeJsonResponse(res);
       const official = (data.accounts || []).map(a => ({
         id: a.id || a.instagramId || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()+Math.random())),
         name: a.pageName || a.name || "Instagram Account",
@@ -1030,7 +1046,7 @@ persistAll();
         })
       });
 
-      const data = await res.json();
+      const data = await safeJsonResponse(res);
       if (!res.ok) throw new Error(data.error || "فشل النشر");
 
       item.status = "published";
@@ -1450,7 +1466,7 @@ async function uploadVideoToCloudinary(file){
     body: form
   });
 
-  const data = await res.json();
+  const data = await safeJsonResponse(res);
 
   if(!res.ok){
     throw new Error("Cloudinary upload failed: " + JSON.stringify(data));
