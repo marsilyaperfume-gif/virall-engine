@@ -70,6 +70,15 @@ exports.handler = async function(event) {
     });
     return { statusCode: 200, headers: corsHeaders, body: JSON.stringify({ ok: true, published }) };
   } catch (err) {
-    return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ error: err.message }) };
+    return { 
+      statusCode: 500, 
+      headers: corsHeaders, 
+      body: JSON.stringify({ 
+        error: err.message,
+        hint: err.message && err.message.includes("instagram_content_publish") 
+          ? "أعد ربط الحساب من الموقع بعد رفع هذه النسخة حتى يحصل التوكن الجديد على صلاحية instagram_content_publish." 
+          : undefined
+      }) 
+    };
   }
 };

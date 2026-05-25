@@ -153,3 +153,10 @@ v13.8 Publish Now + Luxury Glass:
 - Shows clear message when video is local blob and Storage is not configured yet.
 - Refreshed UI with luxury transparent glassmorphism style.
 - No OAuth or account connection changes.
+
+
+v19 Publish Permission Fix:
+- Root cause: OAuth was not requesting instagram_content_publish.
+- Added instagram_content_publish back to Facebook Login OAuth scopes.
+- Added /.netlify/functions/token-debug to verify the stored page token scopes.
+- After deploying this version, delete/reconnect Instagram accounts so new tokens include publish permission.
