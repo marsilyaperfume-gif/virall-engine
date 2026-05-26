@@ -1,0 +1,1 @@
+Clean rebuild: Original Videos -> Hook Render -> Edited Videos -> Cloudinary -> Publish/Schedule. Netlify functions preserved from v31.
