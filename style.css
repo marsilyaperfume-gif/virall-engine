@@ -391,230 +391,272 @@ body{overflow-x:hidden;}
 main,section{max-width:100%;}
 
 
-/* ===== v33 FINAL LAYOUT FIX ===== */
+/* ===== v35 CLEAN PROFESSIONAL LAYOUT ===== */
 
-/* Global overflow and sizing */
+/* hard reset for overflow */
 html, body{
-  width:100% !important;
-  max-width:100% !important;
+  width:100%;
+  max-width:100%;
   overflow-x:hidden !important;
 }
 
-*{
-  box-sizing:border-box;
+body{
+  margin:0;
 }
 
-/* Main app shell: prevent huge empty right area */
-body > *{
-  max-width:100vw !important;
-}
-
-/* Common app containers */
-.app,
-.dashboard,
-.container,
-.main,
-main,
-.page,
-.content,
-.layout,
-.wrapper{
-  max-width:100vw !important;
-  overflow-x:hidden !important;
-}
-
-/* Force the visible layout to stay within screen */
-main,
-.content,
-.dashboard,
-.page{
-  width:100% !important;
-}
-
-/* Cards/panels should not exceed available width */
-.card,
-.panel,
-.section,
-.glass,
-.video-card,
-.queue-card,
-.account-card,
-.hook-card,
-[class*="card"],
-[class*="panel"]{
-  max-width:100% !important;
-}
-
-/* Fix side empty area caused by oversized queue panels */
-#queue,
-.queue,
-.autopilot,
-.autopilot-queue,
-[data-section="queue"]{
-  width:100% !important;
-  max-width:100% !important;
-  overflow-x:hidden !important;
-}
-
-/* Any direct child with huge width becomes responsive */
-main > div,
-section > div,
-.content > div,
-.dashboard > div{
-  max-width:100% !important;
-}
-
-/* Keep sidebar normal and prevent content from creating horizontal scroll */
-aside,
-.sidebar,
-nav{
-  flex-shrink:0;
-}
-
-/* Fix large empty right block by constraining grids */
-.grid,
-.cards-grid,
-.videos-grid,
-.accounts-grid{
-  display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(280px,1fr)) !important;
-  gap:18px !important;
-  width:100% !important;
-  max-width:100% !important;
-}
-
-/* Hook editor area layout fix */
-.hook-editor,
-.hook-builder,
-.hook-settings,
-.control-center,
-#control-center{
-  width:100% !important;
-  max-width:100% !important;
-  overflow:hidden !important;
-}
-
-/* Make preview + controls responsive */
-.hook-preview-wrap,
-.preview-wrap,
-.editor-wrap{
+/* Actual app shell: aside + main */
+#app.app{
   display:grid !important;
-  grid-template-columns:minmax(260px,420px) minmax(260px,1fr) !important;
-  gap:18px !important;
-  width:100% !important;
-  max-width:100% !important;
+  grid-template-columns:minmax(0, 1fr) 278px !important;
+  grid-template-areas:"main sidebar" !important;
+  width:100vw !important;
+  max-width:100vw !important;
+  min-height:100vh !important;
+  overflow-x:hidden !important;
+  direction:ltr !important;
 }
 
-/* If previous layout uses flex, tame it */
-.hook-preview-wrap > *,
-.preview-wrap > *,
-.editor-wrap > *{
+/* Sidebar should stay right and stable */
+#app.app > aside{
+  grid-area:sidebar !important;
+  width:278px !important;
+  min-width:278px !important;
+  max-width:278px !important;
+  height:100vh !important;
+  position:sticky !important;
+  top:0 !important;
+  overflow-y:auto !important;
+  overflow-x:hidden !important;
+  direction:rtl !important;
+  z-index:10 !important;
+}
+
+/* Main content fills remaining area only */
+#app.app > main{
+  grid-area:main !important;
+  width:100% !important;
+  max-width:100% !important;
   min-width:0 !important;
+  padding:24px !important;
+  overflow-x:hidden !important;
+  direction:rtl !important;
+}
+
+/* Header and tabs */
+#app main > header{
+  width:100% !important;
+  max-width:1180px !important;
+  margin:0 auto 20px auto !important;
+}
+
+#app main > .tab{
+  width:100% !important;
+  max-width:1180px !important;
+  margin:0 auto !important;
+  overflow-x:hidden !important;
+}
+
+/* Cards and toolbars never exceed tab width */
+#app .card,
+#app .toolbar,
+#app .hero,
+#app .control-grid,
+#app .grid2,
+#app .split,
+#app .stats,
+#app .video-list,
+#app .queue-list,
+#app .account-list,
+#app .factory{
   max-width:100% !important;
 }
 
-/* Video phone preview should not push layout */
-.phone-preview,
-.mobile-preview,
-.reel-preview,
-.preview-phone{
-  max-width:360px !important;
+/* Dashboard layout cleaner */
+#dashboard .hero{
+  grid-template-columns:minmax(0,1fr) minmax(280px,380px) !important;
+}
+
+/* Queue section clean */
+#queue{
+  display:block;
+}
+
+#queue .toolbar{
+  display:flex !important;
+  align-items:center !important;
+  justify-content:space-between !important;
+  gap:16px !important;
+  width:100% !important;
+  margin-bottom:18px !important;
+}
+
+#queueList.queue-list{
+  display:grid !important;
+  gap:14px !important;
   width:100% !important;
 }
 
-/* Queue toolbar clean layout */
+/* Smart scheduler toolbar */
 .v32-scheduler-toolbar{
   width:100% !important;
+  max-width:100% !important;
   margin:0 0 18px 0 !important;
   padding:16px !important;
-  max-width:100% !important;
-  direction:rtl;
+  border-radius:20px !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:space-between !important;
+  flex-wrap:wrap !important;
+  gap:12px !important;
+  background:rgba(255,255,255,.065) !important;
+  border:1px solid rgba(255,255,255,.13) !important;
+}
+
+.v32-scheduler-title{
+  flex:1 1 330px !important;
+  min-width:260px !important;
+  text-align:right !important;
+  line-height:1.7 !important;
 }
 
 .v32-scheduler-actions{
+  display:flex !important;
+  align-items:center !important;
   justify-content:flex-start !important;
+  flex-wrap:wrap !important;
+  gap:10px !important;
 }
 
-/* Buttons should not become vertical red bars */
+/* Buttons: prevent vertical red strips forever */
 button,
-.btn,
+.primary,
+.secondary,
 .v32-build,
 .v32-settings,
 .v32-clear,
 .v32-delete-one,
-.v29-delete-queue,
-.v29-clear-queue,
-.v28-delete-queue,
-.v28-clear-queue,
-.delete-queue-item-btn,
-.clear-queue-btn{
+.publish-now-btn,
+.schedule-now-btn{
   writing-mode:horizontal-tb !important;
   text-orientation:mixed !important;
   white-space:nowrap !important;
   height:auto !important;
   min-height:42px !important;
   max-height:none !important;
-  width:auto !important;
-  min-width:auto !important;
-  max-width:max-content !important;
+  width:auto;
+  max-width:100%;
   position:relative !important;
   inset:auto !important;
 }
 
-/* Fix injected hook settings button */
+.v32-build,
+.v32-settings,
+.v32-clear,
+.v32-delete-one{
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  width:auto !important;
+  min-width:auto !important;
+  max-width:max-content !important;
+  padding:10px 16px !important;
+  border-radius:14px !important;
+}
+
+/* Hide old duplicate queue controls */
+.v28-delete-queue,
+.v28-clear-queue,
+.v29-delete-queue,
+.v29-clear-queue,
+.delete-queue-item-btn,
+.clear-queue-btn{
+  display:none !important;
+}
+
+/* Control center readability */
+#control .control-grid{
+  grid-template-columns:repeat(3,minmax(0,1fr)) !important;
+}
+
+#videos .split{
+  grid-template-columns:minmax(260px,.85fr) minmax(0,1.15fr) !important;
+}
+
+#videos .editor,
+#videos .video-list,
+#videos .card{
+  min-width:0 !important;
+}
+
+#videos video{
+  max-width:100% !important;
+}
+
+/* Hook settings floating button */
 .v30-hook-settings{
+  position:fixed !important;
   left:22px !important;
   bottom:22px !important;
   right:auto !important;
-  width:auto !important;
+  z-index:9999 !important;
   max-width:220px !important;
-  white-space:normal !important;
-  line-height:1.4 !important;
+  width:auto !important;
 }
 
-/* Better dashboard content width */
-@media (min-width: 1100px){
-  main,
-  .main,
-  .content,
-  .dashboard,
-  .page{
-    padding-left:24px !important;
-    padding-right:24px !important;
+/* Responsive */
+@media (max-width:1100px){
+  #app.app{
+    display:block !important;
+    width:100% !important;
   }
-}
 
-/* Responsive correction */
-@media (max-width: 1100px){
-  .hook-preview-wrap,
-  .preview-wrap,
-  .editor-wrap{
+  #app.app > aside{
+    display:none !important;
+  }
+
+  #app.app > main{
+    width:100% !important;
+    max-width:100% !important;
+    padding:14px !important;
+  }
+
+  #app main > header,
+  #app main > .tab{
+    max-width:100% !important;
+  }
+
+  #dashboard .hero,
+  #control .control-grid,
+  #videos .split,
+  .grid2{
     grid-template-columns:1fr !important;
   }
-  .phone-preview,
-  .mobile-preview,
-  .reel-preview,
-  .preview-phone{
-    margin:auto !important;
-  }
-}
 
-@media (max-width: 760px){
-  .v32-scheduler-toolbar{
-    align-items:stretch !important;
+  #queue .toolbar{
+    display:block !important;
   }
+
   .v32-scheduler-actions{
     width:100% !important;
   }
+
   .v32-scheduler-actions button{
-    flex:1 1 auto !important;
+    flex:1 1 150px !important;
     max-width:none !important;
   }
 }
 
-/* Hide accidental empty mega panels if they have no useful children */
-div:empty{
-  min-height:0 !important;
-}
+/* End v35 */
 
-/* ===== End v33 FINAL LAYOUT FIX ===== */
+/* v36 hooked video badge */
+.v36-hooked-badge{
+  display:inline-flex;
+  margin-top:10px;
+  padding:8px 12px;
+  border-radius:999px;
+  color:#bbf7d0;
+  background:rgba(22,163,74,.16);
+  border:1px solid rgba(134,239,172,.28);
+  font-weight:900;
+  font-size:13px;
+}

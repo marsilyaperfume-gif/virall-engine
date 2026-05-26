@@ -2425,43 +2425,146 @@ window.v32ClearQueue = v32ClearQueue;
 /* ===== End v32 Final Stable Queue + Smart Scheduler ===== */
 
 
-/* ===== v33 Runtime Layout Stabilizer ===== */
-function v33StabilizeLayout(){
+/* ===== v35 Safe Runtime Cleanup ===== */
+function v35CleanupUI(){
   try{
     document.documentElement.style.overflowX = "hidden";
     document.body.style.overflowX = "hidden";
-
+    document.querySelectorAll(".v28-delete-queue,.v28-clear-queue,.v29-delete-queue,.v29-clear-queue,.delete-queue-item-btn,.clear-queue-btn").forEach(el=>el.remove());
     document.querySelectorAll("button").forEach(btn=>{
-      const txt = (btn.textContent || "").trim();
-      if(txt.includes("حذف") || txt.includes("الجدولة") || txt.includes("توزيع")){
-        btn.style.writingMode = "horizontal-tb";
-        btn.style.textOrientation = "mixed";
-        btn.style.whiteSpace = "nowrap";
-        btn.style.width = "auto";
-        btn.style.maxWidth = "max-content";
-        btn.style.height = "auto";
-        btn.style.position = "relative";
-        btn.style.inset = "auto";
-      }
-    });
-
-    // Remove duplicated delete buttons inside same queue item, keep the newest v32 button.
-    document.querySelectorAll("div").forEach(card=>{
-      const deletes = Array.from(card.querySelectorAll(".v32-delete-one"));
-      if(deletes.length > 1){
-        deletes.slice(0,-1).forEach(b=>b.remove());
-      }
-    });
-
-    // Clamp oversized panels
-    document.querySelectorAll("main,section,div").forEach(el=>{
-      const rect = el.getBoundingClientRect();
-      if(rect.width > window.innerWidth * 1.25){
-        el.style.maxWidth = "100%";
-        el.style.overflowX = "hidden";
+      const t=(btn.textContent||"").trim();
+      if(t.includes("حذف") || t.includes("توزيع") || t.includes("إعدادات") || t.includes("نشر")){
+        btn.style.writingMode="horizontal-tb";
+        btn.style.textOrientation="mixed";
+        btn.style.whiteSpace="nowrap";
       }
     });
   }catch(e){}
 }
-setInterval(v33StabilizeLayout, 1000);
-/* ===== End v33 Runtime Layout Stabilizer ===== */
+setInterval(v35CleanupUI,1200);
+/* ===== End v35 Safe Runtime Cleanup ===== */
+
+
+/* ===== v36 Cloudinary Hooked Video Generator ===== */
+function v36EncodeCloudinaryText(text){
+  return encodeURIComponent(String(text || ""))
+    .replace(/%20/g, "%20")
+    .replace(/\(/g,"%28")
+    .replace(/\)/g,"%29")
+    .replace(/!/g,"%21")
+    .replace(/'/g,"%27");
+}
+
+function v36BuildHookedCloudinaryVideoUrl(originalUrl, hookText){
+  if(!originalUrl || !originalUrl.includes("/video/upload/")){
+    return originalUrl;
+  }
+
+  const hookSettings = (typeof v30GetHookSettings === "function")
+    ? v30GetHookSettings()
+    : {fontSize:54, top:90};
+
+  const fontSize = Math.max(30, Number(hookSettings.fontSize) || 54);
+  const top = Math.max(40, Number(hookSettings.top) || 90);
+
+  // Cloudinary text overlay transformation.
+  // This creates a real transformed video URL where the hook is burned into the delivered video.
+  const safeText = v36EncodeCloudinaryText(hookText);
+  const transform =
+    `l_text:Arial_${fontSize}_bold:${safeText},co_white,g_north,y_${top},` +
+    `b_rgb:00000080,bo_2px_solid_rgb:ffffff50,r_22,w_900,c_fit/`;
+
+  return originalUrl.replace("/video/upload/", "/video/upload/" + transform);
+}
+
+async function v36UploadOriginalAndUseHookedCloudinary(file){
+  const hook = (typeof v30PickHook === "function")
+    ? v30PickHook(file.name)
+    : "هذا العطر خطير بصراحة 😮";
+
+  alert("جاري رفع الفيديو إلى Cloudinary وإنشاء نسخة نهائية مدموج فيها الهوك.");
+
+  const localUrl = URL.createObjectURL(file);
+
+  const tempVideo = {
+    id: "v_" + Date.now() + "_" + Math.random().toString(16).slice(2),
+    name: file.name,
+    originalName: file.name,
+    size: file.size,
+    type: file.type,
+    url: localUrl,
+    localUrl,
+    hook,
+    caption: hook,
+    cloudinaryOriginalUrl: "",
+    cloudinaryUrl: "",
+    hookedCloudinaryUrl: "",
+    uploadedToCloudinary: false,
+    renderedWithHook: true,
+    hookBurnedByCloudinary: true,
+    status: "uploading_to_cloudinary",
+    createdAt: new Date().toISOString()
+  };
+
+  videos.push(tempVideo);
+  try{ if(typeof saveAllData === "function") saveAllData(); }catch(e){}
+  try{ if(typeof renderAll === "function") renderAll(); }catch(e){}
+
+  try{
+    const uploaded = await uploadVideoToCloudinary(file);
+    const hookedUrl = v36BuildHookedCloudinaryVideoUrl(uploaded.cloudinaryUrl, hook);
+
+    tempVideo.cloudinaryOriginalUrl = uploaded.cloudinaryUrl;
+    tempVideo.hookedCloudinaryUrl = hookedUrl;
+
+    // IMPORTANT: publishing uses cloudinaryUrl/url, so set both to hooked final video.
+    tempVideo.cloudinaryUrl = hookedUrl;
+    tempVideo.url = hookedUrl;
+
+    tempVideo.publicId = uploaded.publicId;
+    tempVideo.duration = uploaded.duration;
+    tempVideo.bytes = uploaded.bytes;
+    tempVideo.format = uploaded.format;
+    tempVideo.resourceType = uploaded.resourceType;
+    tempVideo.uploadedToCloudinary = true;
+    tempVideo.status = "ready";
+    tempVideo.compatible = true;
+
+    try{ if(typeof saveAllData === "function") saveAllData(); }catch(e){}
+    try{ if(typeof renderAll === "function") renderAll(); }catch(e){}
+
+    alert("تم إنشاء نسخة الفيديو مع الهوك وسيتم نشرها بدلاً من الأصل ✅");
+    return tempVideo;
+
+  }catch(err){
+    tempVideo.status = "cloudinary_failed";
+    tempVideo.error = err.message || String(err);
+    try{ if(typeof saveAllData === "function") saveAllData(); }catch(e){}
+    try{ if(typeof renderAll === "function") renderAll(); }catch(e){}
+    alert("فشل إنشاء نسخة الفيديو مع الهوك: " + tempVideo.error);
+    return tempVideo;
+  }
+}
+
+// Override previous browser-render upload path.
+// This is more stable: original video uploads to Cloudinary, then Cloudinary generates the final hooked video URL.
+try{
+  handleVideoFileWithCloudinary = v36UploadOriginalAndUseHookedCloudinary;
+}catch(e){
+  window.handleVideoFileWithCloudinary = v36UploadOriginalAndUseHookedCloudinary;
+}
+
+function v36ShowHookedBadges(){
+  try{
+    document.querySelectorAll(".video-item").forEach((card,index)=>{
+      const v = (videos || [])[index];
+      if(!v || card.querySelector(".v36-hooked-badge")) return;
+      const badge = document.createElement("div");
+      badge.className = "v36-hooked-badge";
+      badge.textContent = v.hookedCloudinaryUrl ? "نسخة الهوك جاهزة للنشر ✅" : "بانتظار نسخة الهوك";
+      card.appendChild(badge);
+    });
+  }catch(e){}
+}
+setInterval(v36ShowHookedBadges,1200);
+/* ===== End v36 Cloudinary Hooked Video Generator ===== */
