@@ -2423,3 +2423,45 @@ setInterval(v32InjectQueueUI, 1200);
 window.v32BuildSmartQueue = v32BuildSmartQueue;
 window.v32ClearQueue = v32ClearQueue;
 /* ===== End v32 Final Stable Queue + Smart Scheduler ===== */
+
+
+/* ===== v33 Runtime Layout Stabilizer ===== */
+function v33StabilizeLayout(){
+  try{
+    document.documentElement.style.overflowX = "hidden";
+    document.body.style.overflowX = "hidden";
+
+    document.querySelectorAll("button").forEach(btn=>{
+      const txt = (btn.textContent || "").trim();
+      if(txt.includes("حذف") || txt.includes("الجدولة") || txt.includes("توزيع")){
+        btn.style.writingMode = "horizontal-tb";
+        btn.style.textOrientation = "mixed";
+        btn.style.whiteSpace = "nowrap";
+        btn.style.width = "auto";
+        btn.style.maxWidth = "max-content";
+        btn.style.height = "auto";
+        btn.style.position = "relative";
+        btn.style.inset = "auto";
+      }
+    });
+
+    // Remove duplicated delete buttons inside same queue item, keep the newest v32 button.
+    document.querySelectorAll("div").forEach(card=>{
+      const deletes = Array.from(card.querySelectorAll(".v32-delete-one"));
+      if(deletes.length > 1){
+        deletes.slice(0,-1).forEach(b=>b.remove());
+      }
+    });
+
+    // Clamp oversized panels
+    document.querySelectorAll("main,section,div").forEach(el=>{
+      const rect = el.getBoundingClientRect();
+      if(rect.width > window.innerWidth * 1.25){
+        el.style.maxWidth = "100%";
+        el.style.overflowX = "hidden";
+      }
+    });
+  }catch(e){}
+}
+setInterval(v33StabilizeLayout, 1000);
+/* ===== End v33 Runtime Layout Stabilizer ===== */

@@ -389,3 +389,232 @@
 }
 body{overflow-x:hidden;}
 main,section{max-width:100%;}
+
+
+/* ===== v33 FINAL LAYOUT FIX ===== */
+
+/* Global overflow and sizing */
+html, body{
+  width:100% !important;
+  max-width:100% !important;
+  overflow-x:hidden !important;
+}
+
+*{
+  box-sizing:border-box;
+}
+
+/* Main app shell: prevent huge empty right area */
+body > *{
+  max-width:100vw !important;
+}
+
+/* Common app containers */
+.app,
+.dashboard,
+.container,
+.main,
+main,
+.page,
+.content,
+.layout,
+.wrapper{
+  max-width:100vw !important;
+  overflow-x:hidden !important;
+}
+
+/* Force the visible layout to stay within screen */
+main,
+.content,
+.dashboard,
+.page{
+  width:100% !important;
+}
+
+/* Cards/panels should not exceed available width */
+.card,
+.panel,
+.section,
+.glass,
+.video-card,
+.queue-card,
+.account-card,
+.hook-card,
+[class*="card"],
+[class*="panel"]{
+  max-width:100% !important;
+}
+
+/* Fix side empty area caused by oversized queue panels */
+#queue,
+.queue,
+.autopilot,
+.autopilot-queue,
+[data-section="queue"]{
+  width:100% !important;
+  max-width:100% !important;
+  overflow-x:hidden !important;
+}
+
+/* Any direct child with huge width becomes responsive */
+main > div,
+section > div,
+.content > div,
+.dashboard > div{
+  max-width:100% !important;
+}
+
+/* Keep sidebar normal and prevent content from creating horizontal scroll */
+aside,
+.sidebar,
+nav{
+  flex-shrink:0;
+}
+
+/* Fix large empty right block by constraining grids */
+.grid,
+.cards-grid,
+.videos-grid,
+.accounts-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(280px,1fr)) !important;
+  gap:18px !important;
+  width:100% !important;
+  max-width:100% !important;
+}
+
+/* Hook editor area layout fix */
+.hook-editor,
+.hook-builder,
+.hook-settings,
+.control-center,
+#control-center{
+  width:100% !important;
+  max-width:100% !important;
+  overflow:hidden !important;
+}
+
+/* Make preview + controls responsive */
+.hook-preview-wrap,
+.preview-wrap,
+.editor-wrap{
+  display:grid !important;
+  grid-template-columns:minmax(260px,420px) minmax(260px,1fr) !important;
+  gap:18px !important;
+  width:100% !important;
+  max-width:100% !important;
+}
+
+/* If previous layout uses flex, tame it */
+.hook-preview-wrap > *,
+.preview-wrap > *,
+.editor-wrap > *{
+  min-width:0 !important;
+  max-width:100% !important;
+}
+
+/* Video phone preview should not push layout */
+.phone-preview,
+.mobile-preview,
+.reel-preview,
+.preview-phone{
+  max-width:360px !important;
+  width:100% !important;
+}
+
+/* Queue toolbar clean layout */
+.v32-scheduler-toolbar{
+  width:100% !important;
+  margin:0 0 18px 0 !important;
+  padding:16px !important;
+  max-width:100% !important;
+  direction:rtl;
+}
+
+.v32-scheduler-actions{
+  justify-content:flex-start !important;
+}
+
+/* Buttons should not become vertical red bars */
+button,
+.btn,
+.v32-build,
+.v32-settings,
+.v32-clear,
+.v32-delete-one,
+.v29-delete-queue,
+.v29-clear-queue,
+.v28-delete-queue,
+.v28-clear-queue,
+.delete-queue-item-btn,
+.clear-queue-btn{
+  writing-mode:horizontal-tb !important;
+  text-orientation:mixed !important;
+  white-space:nowrap !important;
+  height:auto !important;
+  min-height:42px !important;
+  max-height:none !important;
+  width:auto !important;
+  min-width:auto !important;
+  max-width:max-content !important;
+  position:relative !important;
+  inset:auto !important;
+}
+
+/* Fix injected hook settings button */
+.v30-hook-settings{
+  left:22px !important;
+  bottom:22px !important;
+  right:auto !important;
+  width:auto !important;
+  max-width:220px !important;
+  white-space:normal !important;
+  line-height:1.4 !important;
+}
+
+/* Better dashboard content width */
+@media (min-width: 1100px){
+  main,
+  .main,
+  .content,
+  .dashboard,
+  .page{
+    padding-left:24px !important;
+    padding-right:24px !important;
+  }
+}
+
+/* Responsive correction */
+@media (max-width: 1100px){
+  .hook-preview-wrap,
+  .preview-wrap,
+  .editor-wrap{
+    grid-template-columns:1fr !important;
+  }
+  .phone-preview,
+  .mobile-preview,
+  .reel-preview,
+  .preview-phone{
+    margin:auto !important;
+  }
+}
+
+@media (max-width: 760px){
+  .v32-scheduler-toolbar{
+    align-items:stretch !important;
+  }
+  .v32-scheduler-actions{
+    width:100% !important;
+  }
+  .v32-scheduler-actions button{
+    flex:1 1 auto !important;
+    max-width:none !important;
+  }
+}
+
+/* Hide accidental empty mega panels if they have no useful children */
+div:empty{
+  min-height:0 !important;
+}
+
+/* ===== End v33 FINAL LAYOUT FIX ===== */
