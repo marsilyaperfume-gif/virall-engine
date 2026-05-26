@@ -1,6 +1,101 @@
 
+function cloudinaryMp4Url(url){
+  if(!url || !url.includes("/video/upload/")) return url;
+  if(url.includes("/f_mp4,")) return url;
+
+  return url.replace(
+    "/video/upload/",
+    "/video/upload/f_mp4,vc_h264,ac_aac,fl_progressive/"
+  ).replace(/\.(webm|mov|avi|mkv)(\?|$)/i, ".mp4$2");
+}
+
+
+/* ===== v27 Netlify Functions Path Fix ===== */
+function getFunctionsBase(){
+  return "/.netlify/functions";
+}
+
+async function safeJsonResponse(res){
+  const text = await res.text();
+  try{
+    return JSON.parse(text);
+  }catch(err){
+    throw new Error("Function returned non-JSON response. تأكد أن المسار هو /.netlify/functions وليس .netlify/functions. Response starts with: " + text.slice(0,120));
+  }
+}
+/* ===== End v27 ===== */
+
+
+async function publishUploadedVideoNow(index){
+  const video = videos[index];
+  if(!video){
+    alert("الفيديو غير موجود");
+    return;
+  }
+
+  const officialAccounts = accounts.filter(a => a.official);
+  if(!officialAccounts.length){
+    alert("لا يوجد حساب Officially Connected");
+    return;
+  }
+
+  const selected = officialAccounts[0];
+
+  if(!confirm(`نشر الفيديو الآن على ${selected.name || selected.user || "Instagram"} ؟`)){
+    return;
+  }
+
+  const btns = document.querySelectorAll(`[data-publish-video="${index}"]`);
+  btns.forEach(b=>{
+    b.disabled=true;
+    b.textContent="جاري النشر...";
+  });
+
+  try{
+
+    if(video.url && String(video.url).startsWith("blob:")){
+      alert("الفيديو مرفوع محلياً فقط حالياً. يجب ربط Storage عام للفيديو قبل النشر الفعلي على Instagram.");
+      return;
+    }
+
+    const backendBase = getFunctionsBase();
+
+    const res = await fetch(backendBase + "/publish-reel",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json"
+      },
+      body:JSON.stringify({
+        accountId:selected.id,
+        videoUrl:video.cloudinaryUrl || video.url,
+        caption:video.caption || ""
+      })
+    });
+
+    const data = await safeJsonResponse(res);
+
+    if(!res.ok){
+      throw new Error(data.error || "فشل النشر");
+    }
+
+    alert("تم إرسال الفيديو للنشر بنجاح");
+  }catch(err){
+    console.error(err);
+    alert("فشل النشر: " + (err.message || err));
+  }finally{
+    btns.forEach(b=>{
+      b.disabled=false;
+      b.textContent="نشر الآن";
+    });
+  }
+}
+
+
 (() => {
   "use strict";
+
+  const EMAIL = "info@marrsile.com";
+  const PASS = "Mo774853";
 
   const $ = (id) => document.getElementById(id);
   const rand = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -43,7 +138,7 @@
   let selected = 0;
   let autopilot = false;
 
-  const APP_STORE_KEY = "marrsile_growth_engine_v20_daily_scheduler";
+  const APP_STORE_KEY = "marrsile_growth_engine_v18";
 
   function safeParseStore() {
     try {
@@ -134,7 +229,7 @@
 
     const endpoint = `https://api.cloudinary.com/v1_1/${encodeURIComponent(cloudName)}/video/upload`;
     const res = await fetch(endpoint, { method: "POST", body: form });
-    const data = await res.json();
+    const data = await safeJsonResponse(res);
 
     if (!res.ok || !data.secure_url) {
       throw new Error(data.error?.message || "فشل رفع الفيديو إلى Cloudinary");
@@ -172,7 +267,7 @@
           caption: video.caption || video.hook || settings.captionFooter || ""
         })
       });
-      const data = await res.json();
+      const data = await safeJsonResponse(res);
       if (!res.ok) throw new Error(data.error || "فشل النشر");
 
       video.status = "تم إرسال النشر";
@@ -411,40 +506,15 @@
     $("videoCaption").addEventListener("input", manualVideoEdit);
   }
 
-  function finishLogin() {
-    $("loginScreen").classList.add("hidden");
-    $("app").classList.remove("hidden");
-    hydrateAll();
-    persistAuth(true);
-    renderAll();
-  }
-
-  function isLocalPreview() {
-    return location.protocol === "file:" || ["localhost", "127.0.0.1", ""].includes(location.hostname);
-  }
-
-  async function login() {
-    const email = $("email").value.trim();
-    const password = $("password").value.trim();
-    if (!email || !password) return alert("أدخل البريد وكلمة السر");
-
-    try {
-      const res = await fetch(functionsBase().replace(/\/$/, "") + "/auth-login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password })
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) throw new Error(data.error || "بيانات الدخول غير صحيحة");
-      finishLogin();
-    } catch (err) {
-      // Netlify Functions لا تعمل عند فتح index.html مباشرة من الجهاز.
-      // هذا fallback فقط للمعاينة المحلية حتى لا يظهر Failed to fetch.
-      if (isLocalPreview() && email === "info@marrsile.com" && password === "Mo774853") {
-        finishLogin();
-        return;
-      }
-      alert("فشل تسجيل الدخول: " + ((err && err.message) ? err.message : err) + "\n\nإذا فتحت الموقع من الكمبيوتر مباشرة، ارفعه على Netlify أو شغله عبر netlify dev.");
+  function login() {
+    if ($("email").value.trim() === EMAIL && $("password").value.trim() === PASS) {
+      $("loginScreen").classList.add("hidden");
+      $("app").classList.remove("hidden");
+      hydrateAll();
+      persistAuth(true);
+      renderAll();
+    } else {
+      alert("بيانات الدخول غير صحيحة");
     }
   }
 
@@ -613,7 +683,6 @@
     }));
     renderVideos();
     loadEditor();
-    persistAll();
   }
 
   function changeDaily(delta) {
@@ -642,7 +711,7 @@
   function renderTimes() {
     $("timeList").innerHTML = settings.times.map((t, i) => `
       <div class="time-row">
-        <input type="time" value="${escapeHtml(t)}" data-time-index="${i}">
+        <input type="time" value="" data-time-index="${i}">
         <button data-remove-time="${i}">حذف</button>
       </div>
     `).join("");
@@ -766,7 +835,6 @@ persistAll();
     v.caption = $("videoCaption").value;
     renderVideos();
     setPreviewHook(v.hook);
-    persistAll();
   }
 
   function regenSelected() {
@@ -776,7 +844,6 @@ persistAll();
     v.caption = makeCaption("عام الخليج");
     renderVideos();
     loadEditor();
-    persistAll();
   }
 
 
@@ -794,7 +861,7 @@ persistAll();
     try {
       const res = await fetch(functionsBase().replace(/\/$/, "") + "/accounts");
       if (!res.ok) throw new Error("فشل جلب الحسابات الرسمية");
-      const data = await res.json();
+      const data = await safeJsonResponse(res);
       const official = (data.accounts || []).map(a => ({
         id: a.id || a.instagramId || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()+Math.random())),
         name: a.pageName || a.name || "Instagram Account",
@@ -924,91 +991,34 @@ persistAll();
       return;
     }
 
-    const activeAccounts = accounts.filter(a => a.official);
-    if (!activeAccounts.length) {
-      alert("النشر التلقائي يحتاج حساباً واحداً على الأقل مربوطاً رسمياً من Meta. الحسابات اليدوية تبقى للعرض فقط.");
-      openTab("accounts");
-      return;
-    }
-
     autopilot = true;
-    queue = buildDailyQueue(activeAccounts);
-    startSchedulerLoop();
-
-    renderAll();
-    persistAll();
-    openTab("queue");
-    alert(`تم بناء الجدول: ${settings.daily} فيديو يومياً لكل حساب. لن ينشر 500 فيديو بنفس اليوم.`);
-  }
-
-  function buildDailyQueue(activeAccounts) {
-    const daily = Math.max(1, Number(settings.daily || 3));
-    const times = Array.isArray(settings.times) && settings.times.length ? settings.times : ["08:00", "16:00", "20:00"];
-    const today = new Date();
-    today.setSeconds(0, 0);
-
-    const items = [];
-    activeAccounts.forEach((a, accountIndex) => {
-      videos.forEach((v, videoIndex) => {
-        const dayOffset = Math.floor(videoIndex / daily);
-        const slotIndex = videoIndex % daily;
-        const baseTime = times[slotIndex % times.length] || "08:00";
-        const [hh, mm] = String(baseTime).split(":").map(Number);
-        const scheduled = new Date(today);
-        scheduled.setDate(today.getDate() + dayOffset);
-        scheduled.setHours(hh || 0, mm || 0, 0, 0);
-        scheduled.setMinutes(scheduled.getMinutes() + randomDelayMinutes(accountIndex));
-
-        // إذا وقت اليوم مرّ، ابدأ من الغد حتى لا ينشر دفعة مباشرة بعد تشغيل Autopilot.
-        if (dayOffset === 0 && scheduled <= new Date()) {
-          scheduled.setDate(scheduled.getDate() + 1);
-        }
-
-        items.push({
-          id: `${a.id || a.name}-${v.id || v.name}-${scheduled.getTime()}`,
-          videoId: v.id,
+    queue = [];
+    videos.forEach((v, i) => {
+      accounts.forEach((a, j) => {
+        queue.push({
           video: v.name,
-          accountId: a.id,
           account: a.name,
-          market: a.market || "رسمي",
-          time: scheduled.toLocaleString("ar", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }),
-          scheduledAt: scheduled.toISOString(),
-          status: "pending",
+          market: a.market,
+          time: addMinutesToTime(settings.times[(i + j) % settings.times.length], randomDelayMinutes(j)),
+          status: "مجدول تلقائياً",
           hook: v.hook,
           caption: makeCaption(a.market)
         });
       });
     });
 
-    return items.sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
+    renderAll();
+persistAll();
+    openTab("queue");
   }
 
-  let schedulerTimer = null;
-  function startSchedulerLoop() {
-    if (schedulerTimer) clearInterval(schedulerTimer);
-    schedulerTimer = setInterval(runDueQueue, 60 * 1000);
-    runDueQueue();
-  }
-
-  async function runDueQueue() {
-    if (!autopilot || !queue.length) return;
-    const now = new Date();
-    const dueIndex = queue.findIndex(q => q.status === "pending" && q.scheduledAt && new Date(q.scheduledAt) <= now);
-    if (dueIndex === -1) return;
-    await publishQueueItem(dueIndex, true);
-  }
 
   async function publishNowFromQueue(index) {
     const item = queue[index];
     if (!item) return;
+
     const ok = confirm("هل تريد نشر هذا الفيديو الآن على الحساب المحدد؟");
     if (!ok) return;
-    await publishQueueItem(index, false);
-  }
-
-  async function publishQueueItem(index, automatic = false) {
-    const item = queue[index];
-    if (!item || item.status === "publishing" || item.status === "published") return;
 
     const btns = document.querySelectorAll(`[data-publish-now="${index}"]`);
     btns.forEach(b => {
@@ -1016,25 +1026,25 @@ persistAll();
       b.textContent = "جاري النشر...";
     });
 
-    item.status = "publishing";
-    item.lastAttemptAt = new Date().toISOString();
-    renderQueue();
-    persistAll();
-
     try {
-      const account = accounts.find(a => a.id === item.accountId || a.name === item.account || a.user === item.account);
-      const video = videos.find(v => v.id === item.videoId || v.name === item.video);
+      const account = accounts.find(a => a.name === item.account || a.user === item.account || a.id === item.accountId);
+      const video = videos.find(v => v.name === item.video || v.id === item.videoId);
 
       if (!account || !account.official) {
-        throw new Error("هذا العنصر غير مربوط بحساب Officially Connected.");
+        alert("هذا العنصر غير مربوط بحساب رسمي. اختر حساب Officially Connected.");
+        return;
       }
 
-      const videoUrl = video && (video.publicUrl || video.url);
-      if (!videoUrl) {
-        throw new Error("لم يتم العثور على رابط الفيديو. أعد رفع الفيديو.");
+      if (!video || !video.url) {
+        alert("لم يتم العثور على الفيديو داخل المتصفح. أعد رفع الفيديو ثم جرّب النشر.");
+        return;
       }
-      if (String(videoUrl).startsWith("blob:")) {
-        throw new Error("النشر يحتاج رابط فيديو عام من Cloudinary/S3. الفيديو الحالي محلي داخل المتصفح فقط.");
+
+      // ملاحظة مهمة: Instagram API يحتاج video_url عام ومباشر من Storage.
+      // في هذه المرحلة إذا كان الفيديو blob محلي، نعرض رسالة واضحة بدل الفشل الصامت.
+      if (video.url.startsWith("blob:")) {
+        alert("النشر الآن يحتاج رابط فيديو عام من Storage مثل Cloudinary/S3. الفيديو الحالي موجود محلياً داخل المتصفح فقط. الربط والحسابات جاهزة، والخطوة القادمة هي إضافة Storage Upload.");
+        return;
       }
 
       const res = await fetch((settings.backendUrl || "/.netlify/functions").replace(/\/$/, "") + "/publish-reel", {
@@ -1042,27 +1052,22 @@ persistAll();
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({
           accountId: account.id,
-          videoUrl,
-          caption: item.caption || video.caption || item.hook || ""
+          videoUrl: cloudinaryMp4Url(video.cloudinaryUrl || video.url),
+          caption: item.caption || item.hook || ""
         })
       });
 
-      const data = await res.json();
+      const data = await safeJsonResponse(res);
       if (!res.ok) throw new Error(data.error || "فشل النشر");
 
       item.status = "published";
       item.publishedAt = new Date().toISOString();
-      if (video) video.postedTo = [...(video.postedTo || []), account.user || account.name];
       renderAll();
-      persistAll();
-      if (!automatic) alert("تم إرسال النشر إلى Instagram بنجاح.");
+persistAll();
+      alert("تم إرسال النشر إلى Instagram بنجاح.");
     } catch (err) {
       console.error(err);
-      item.status = "failed";
-      item.error = err.message || String(err);
-      renderAll();
-      persistAll();
-      if (!automatic) alert("فشل النشر الآن: " + (err.message || err));
+      alert("فشل النشر الآن: " + (err.message || err));
     } finally {
       btns.forEach(b => {
         b.disabled = false;
@@ -1071,19 +1076,23 @@ persistAll();
     }
   }
 
+
   function renderQueue() {
     $("queueList").innerHTML = queue.length ? queue.map((q, i) => `
       <div class="queue-item">
         <b>${escapeHtml(q.video || q.title || "فيديو")}</b>
         <span class="muted">${escapeHtml(q.account || "")} · ${escapeHtml(q.market || "")} · ${escapeHtml(q.time || "")}</span>
         <p>${escapeHtml(q.hook || "")}</p>
-        <span class="${q.status === "published" ? "ok" : q.status === "failed" ? "bad" : "warn"}">${escapeHtml(q.status || "pending")}</span>
-        ${q.error ? `<small class="muted">${escapeHtml(q.error)}</small>` : ""}
+        <span class="warn">${escapeHtml(q.status || "مجدول")}</span>
         <div class="queue-controls">
-          <button class="publish-now-btn" data-publish-now="${i}" type="button" ${q.status === "published" || q.status === "publishing" ? "disabled" : ""}>${q.status === "publishing" ? "جاري النشر..." : "نشر الآن"}</button>
+          <button class="publish-now-btn" data-publish-now="${i}" type="button">نشر الآن</button>
         </div>
       </div>
-    `).join("") : `<div class="queue-item">شغّل Autopilot ليبني جدول 3 فيديوهات يومياً لكل حساب.</div>`;
+    `).join("") : `<div class="queue-item">شغّل Autopilot ليبني الجدول تلقائياً.</div>`;
+
+    document.querySelectorAll("[data-publish-now]").forEach(btn => {
+      btn.addEventListener("click", () => publishNowFromQueue(Number(btn.dataset.publishNow)));
+    });
   }
 
   function renderHookFactory() {
@@ -1429,7 +1438,6 @@ persistAll();
     setupPublishNowDelegation();
     hydrateAll();
     loadSettingsToUI();
-    if (queue.some(q => q.status === "pending")) { autopilot = true; startSchedulerLoop(); }
     renderAll();
     if (new URLSearchParams(window.location.search).get("connected")) {
       loadOfficialAccounts();
@@ -1437,3 +1445,992 @@ persistAll();
     }
   });
 })();
+
+
+/* ===== v25 Cloudinary Upload Fix ===== */
+async function uploadVideoToCloudinary(file){
+  const cloudName =
+    (settings && (settings.cloudinaryCloudName || settings.cloudName || settings.cloudinary_cloud_name)) ||
+    localStorage.getItem("cloudinaryCloudName") ||
+    localStorage.getItem("cloudName") ||
+    "";
+
+  const uploadPreset =
+    (settings && (settings.uploadPreset || settings.cloudinaryUploadPreset || settings.upload_preset)) ||
+    localStorage.getItem("uploadPreset") ||
+    localStorage.getItem("cloudinaryUploadPreset") ||
+    "";
+
+  if(!cloudName || !uploadPreset){
+    throw new Error("Cloudinary غير مضبوط. ضع Cloud Name و Upload Preset ثم اضغط حفظ.");
+  }
+
+  const form = new FormData();
+  form.append("file", file);
+  form.append("upload_preset", uploadPreset);
+  form.append("folder", "virall-gcc-reels");
+
+  const endpoint = `https://api.cloudinary.com/v1_1/${cloudName}/video/upload`;
+
+  const res = await fetch(endpoint, {
+    method: "POST",
+    body: form
+  });
+
+  const data = await safeJsonResponse(res);
+
+  if(!res.ok){
+    throw new Error("Cloudinary upload failed: " + JSON.stringify(data));
+  }
+
+  if(!data.secure_url){
+    throw new Error("Cloudinary لم يرجع رابط فيديو secure_url");
+  }
+
+  return {
+    cloudinaryUrl: data.secure_url,
+    publicId: data.public_id,
+    duration: data.duration,
+    bytes: data.bytes,
+    format: data.format,
+    resourceType: data.resource_type
+  };
+}
+
+async function handleVideoFileWithCloudinary(file){
+  const localUrl = URL.createObjectURL(file);
+
+  const tempVideo = {
+    id: "v_" + Date.now() + "_" + Math.random().toString(16).slice(2),
+    name: file.name,
+    size: file.size,
+    type: file.type,
+    url: localUrl,
+    localUrl,
+    cloudinaryUrl: "",
+    uploadedToCloudinary: false,
+    status: "uploading_to_cloudinary",
+    createdAt: new Date().toISOString()
+  };
+
+  videos.push(tempVideo);
+  saveAllData && saveAllData();
+  if(typeof renderAll === "function") renderAll();
+
+  try{
+    const uploaded = await uploadVideoToCloudinary(file);
+    tempVideo.cloudinaryRawUrl = uploaded.cloudinaryUrl;
+    tempVideo.url = cloudinaryMp4Url(uploaded.cloudinaryUrl);
+    tempVideo.cloudinaryUrl = cloudinaryMp4Url(uploaded.cloudinaryUrl);
+    tempVideo.publicId = uploaded.publicId;
+    tempVideo.duration = uploaded.duration;
+    tempVideo.bytes = uploaded.bytes;
+    tempVideo.format = uploaded.format;
+    tempVideo.resourceType = uploaded.resourceType;
+    tempVideo.uploadedToCloudinary = true;
+    tempVideo.status = "ready";
+    tempVideo.compatible = true;
+
+    saveAllData && saveAllData();
+    if(typeof renderAll === "function") renderAll();
+
+    alert("تم رفع الفيديو إلى Cloudinary بنجاح");
+    return tempVideo;
+  }catch(err){
+    tempVideo.status = "cloudinary_failed";
+    tempVideo.error = err.message || String(err);
+    saveAllData && saveAllData();
+    if(typeof renderAll === "function") renderAll();
+    alert("فشل رفع Cloudinary: " + tempVideo.error);
+    return tempVideo;
+  }
+}
+
+function installCloudinaryUploadInterceptor(){
+  document.addEventListener("change", async (e)=>{
+    const input = e.target;
+    if(!input || input.type !== "file") return;
+    if(!input.files || !input.files.length) return;
+
+    const files = Array.from(input.files).filter(f => String(f.type || "").startsWith("video/"));
+    if(!files.length) return;
+
+    // Stop the old local-only upload path by clearing selected files after we take them.
+    for(const file of files){
+      await handleVideoFileWithCloudinary(file);
+    }
+
+    try{ input.value = ""; }catch(_){}
+  }, true);
+}
+
+if(!window.__cloudinaryUploadInterceptorInstalled){
+  window.__cloudinaryUploadInterceptorInstalled = true;
+  installCloudinaryUploadInterceptor();
+}
+/* ===== End v25 Cloudinary Upload Fix ===== */
+
+
+/* ===== v25 Cloudinary UI status badges ===== */
+function injectCloudinaryStatusBadges(){
+  try{
+    document.querySelectorAll(".video-item").forEach((card,index)=>{
+      const video = videos[index];
+      if(!video || card.querySelector(".cloudinary-status")) return;
+
+      const badge = document.createElement("div");
+      badge.className = "cloudinary-status" + (video.uploadedToCloudinary ? "" : " failed");
+      badge.textContent = video.uploadedToCloudinary ? "Cloudinary مرفوع ✅" : (video.status === "uploading_to_cloudinary" ? "جاري رفع Cloudinary..." : "غير مرفوع Cloudinary");
+      card.appendChild(badge);
+    });
+  }catch(err){}
+}
+setInterval(injectCloudinaryStatusBadges, 1200);
+/* ===== End v25 badges ===== */
+
+
+/* ===== v26 Queue Delete Controls ===== */
+function saveQueueChanges(){
+  try{
+    if(typeof saveAllData === "function") saveAllData();
+    if(window.__virallStore && typeof window.__virallStore.save === "function") window.__virallStore.save();
+    if(typeof v17SaveEverything === "function") v17SaveEverything();
+    localStorage.setItem("virall_queue", JSON.stringify(queue || []));
+    localStorage.setItem("virall_queue_data", JSON.stringify(queue || []));
+  }catch(err){
+    console.error("Queue save error", err);
+  }
+}
+
+function deleteQueueItem(index){
+  if(!Array.isArray(queue)) return;
+  const item = queue[index];
+  if(!item) return;
+
+  const ok = confirm("هل تريد حذف هذا الفيديو من الجدولة؟");
+  if(!ok) return;
+
+  queue.splice(index, 1);
+  saveQueueChanges();
+
+  if(typeof renderAll === "function") renderAll();
+  setTimeout(injectQueueDeleteControls, 200);
+}
+
+function clearAllQueue(){
+  if(!Array.isArray(queue) || !queue.length){
+    alert("لا توجد فيديوهات مجدولة حالياً");
+    return;
+  }
+
+  const ok = confirm("هل تريد حذف كل الفيديوهات من الجدولة؟");
+  if(!ok) return;
+
+  queue.length = 0;
+  saveQueueChanges();
+
+  if(typeof renderAll === "function") renderAll();
+  setTimeout(injectQueueDeleteControls, 200);
+
+  alert("تم حذف كل الجدولة");
+}
+
+function injectQueueDeleteControls(){
+  try{
+    const queueSection =
+      document.querySelector("#queue") ||
+      document.querySelector("[data-section='queue']") ||
+      Array.from(document.querySelectorAll("section, .card, .panel, div")).find(el =>
+        (el.textContent || "").includes("Autopilot Queue")
+      );
+
+    if(queueSection && !queueSection.querySelector(".clear-queue-btn")){
+      const clearBtn = document.createElement("button");
+      clearBtn.className = "clear-queue-btn";
+      clearBtn.type = "button";
+      clearBtn.textContent = "حذف كل الجدولة";
+      clearBtn.onclick = clearAllQueue;
+      queueSection.prepend(clearBtn);
+    }
+
+    document.querySelectorAll(".queue-item").forEach((card, index)=>{
+      if(card.querySelector(".delete-queue-item-btn")) return;
+
+      const controls = document.createElement("div");
+      controls.className = "queue-manage-controls";
+
+      const deleteBtn = document.createElement("button");
+      deleteBtn.className = "delete-queue-item-btn";
+      deleteBtn.type = "button";
+      deleteBtn.textContent = "حذف من الجدولة";
+      deleteBtn.onclick = () => deleteQueueItem(index);
+
+      controls.appendChild(deleteBtn);
+      card.appendChild(controls);
+    });
+
+    // fallback for queue cards that don't use .queue-item
+    const possibleCards = Array.from(document.querySelectorAll("div")).filter(el => {
+      const txt = el.textContent || "";
+      return txt.includes("مجدول تلقائياً") && !el.querySelector(".delete-queue-item-btn");
+    });
+
+    possibleCards.forEach((card, index)=>{
+      const realIndex = Math.min(index, (queue || []).length - 1);
+      if(realIndex < 0) return;
+
+      const controls = document.createElement("div");
+      controls.className = "queue-manage-controls";
+
+      const deleteBtn = document.createElement("button");
+      deleteBtn.className = "delete-queue-item-btn";
+      deleteBtn.type = "button";
+      deleteBtn.textContent = "حذف من الجدولة";
+      deleteBtn.onclick = () => deleteQueueItem(realIndex);
+
+      controls.appendChild(deleteBtn);
+      card.appendChild(controls);
+    });
+
+  }catch(err){
+    console.error("Queue controls inject error", err);
+  }
+}
+
+setInterval(injectQueueDeleteControls, 1200);
+/* ===== End v26 Queue Delete Controls ===== */
+
+
+/* ===== v28 Async Instagram Publish + Queue Controls Fix ===== */
+function v28Sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+function v28FunctionsBase(){ return "/.netlify/functions"; }
+
+async function v28Json(res){
+  const text = await res.text();
+  try { return JSON.parse(text); }
+  catch(e){ throw new Error("Function returned non-JSON. " + text.slice(0,160)); }
+}
+
+async function v28PublishNow(accountId, videoUrl, caption){
+  const createRes = await fetch(v28FunctionsBase() + "/publish-reel", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body:JSON.stringify({ accountId, videoUrl, caption })
+  });
+
+  const created = await v28Json(createRes);
+  if(!createRes.ok) throw new Error(JSON.stringify(created));
+
+  if(!created.creationId){
+    throw new Error("No Instagram creationId returned");
+  }
+
+  for(let i=1; i<=16; i++){
+    await v28Sleep(i === 1 ? 25000 : 12000);
+
+    const finishRes = await fetch(v28FunctionsBase() + "/publish-complete", {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body:JSON.stringify({ accountId: created.accountId || accountId, creationId: created.creationId })
+    });
+
+    const finished = await v28Json(finishRes);
+
+    if(finishRes.ok && finished.ok){
+      return finished;
+    }
+
+    if(finishRes.status === 202 || finished.retry){
+      continue;
+    }
+
+    throw new Error(JSON.stringify(finished));
+  }
+
+  throw new Error("Instagram لم يجهز الفيديو بعد عدة محاولات. جرّب فيديو أقصر أو انتظر ثم أعد المحاولة.");
+}
+
+function v28FindVideoUrl(video){
+  return video.cloudinaryUrl || video.url || video.secure_url || "";
+}
+
+function v28FindOfficialAccount(){
+  return (accounts || []).find(a => a.official) || (accounts || [])[0];
+}
+
+function v28DeleteQueueItem(index){
+  if(!Array.isArray(queue)) return;
+  if(index < 0 || index >= queue.length) return;
+
+  if(!confirm("حذف هذا الفيديو من الجدولة؟")) return;
+
+  queue.splice(index, 1);
+  v28SaveQueue();
+
+  if(typeof renderAll === "function") renderAll();
+  setTimeout(v28InjectQueueControls, 300);
+}
+
+function v28ClearQueue(){
+  if(!Array.isArray(queue) || !queue.length){
+    alert("لا توجد فيديوهات في الجدولة");
+    return;
+  }
+
+  if(!confirm("حذف كل الفيديوهات من الجدولة؟")) return;
+
+  queue.length = 0;
+  v28SaveQueue();
+
+  if(typeof renderAll === "function") renderAll();
+  setTimeout(v28InjectQueueControls, 300);
+}
+
+function v28SaveQueue(){
+  try{
+    localStorage.setItem("virall_queue", JSON.stringify(queue || []));
+    localStorage.setItem("virall_queue_data", JSON.stringify(queue || []));
+    if(typeof saveAllData === "function") saveAllData();
+    if(window.__virallStore && typeof window.__virallStore.save === "function") window.__virallStore.save();
+    if(typeof v17SaveEverything === "function") v17SaveEverything();
+  }catch(e){ console.error(e); }
+}
+
+async function v28PublishVideoIndex(index){
+  const video = (videos || [])[index];
+  const account = v28FindOfficialAccount();
+
+  if(!video) return alert("الفيديو غير موجود");
+  if(!account) return alert("لا يوجد حساب Instagram مربوط");
+  const videoUrl = v28FindVideoUrl(video);
+  if(!videoUrl) return alert("لا يوجد رابط فيديو Cloudinary");
+
+  try{
+    alert("بدأ النشر. قد يحتاج Instagram من 30 ثانية إلى دقيقتين لتجهيز الفيديو.");
+    const result = await v28PublishNow(account.id || account.instagramId, videoUrl, video.caption || video.hook || "");
+    alert("تم النشر بنجاح");
+    return result;
+  }catch(err){
+    alert("فشل النشر: " + (err.message || err));
+  }
+}
+
+function v28InjectQueueControls(){
+  try{
+    document.querySelectorAll(".queue-item").forEach((card, index)=>{
+      if(card.querySelector(".v28-delete-queue")) return;
+      const btn=document.createElement("button");
+      btn.className="v28-delete-queue";
+      btn.textContent="حذف من الجدولة";
+      btn.onclick=()=>v28DeleteQueueItem(index);
+      card.appendChild(btn);
+    });
+
+    const queueArea = Array.from(document.querySelectorAll("div,section")).find(el => (el.textContent||"").includes("Autopilot Queue"));
+    if(queueArea && !queueArea.querySelector(".v28-clear-queue")){
+      const btn=document.createElement("button");
+      btn.className="v28-clear-queue";
+      btn.textContent="حذف كل الجدولة";
+      btn.onclick=v28ClearQueue;
+      queueArea.prepend(btn);
+    }
+
+    // fallback for cards with scheduled text
+    const cards = Array.from(document.querySelectorAll("div")).filter(el => (el.textContent||"").includes("مجدول تلقائياً"));
+    cards.forEach((card, idx)=>{
+      if(card.querySelector(".v28-delete-queue")) return;
+      const btn=document.createElement("button");
+      btn.className="v28-delete-queue";
+      btn.textContent="حذف من الجدولة";
+      btn.onclick=()=>v28DeleteQueueItem(idx);
+      card.appendChild(btn);
+    });
+  }catch(e){ console.error(e); }
+}
+
+function v28InjectPublishButtons(){
+  try{
+    document.querySelectorAll(".video-item").forEach((card, index)=>{
+      const btns = Array.from(card.querySelectorAll("button"));
+      const existing = btns.find(b => (b.textContent||"").includes("نشر الآن"));
+      if(existing && !existing.dataset.v28Bound){
+        existing.dataset.v28Bound="1";
+        existing.onclick=(e)=>{ e.preventDefault(); v28PublishVideoIndex(index); };
+      }
+    });
+  }catch(e){ console.error(e); }
+}
+
+setInterval(v28InjectQueueControls, 1200);
+setInterval(v28InjectPublishButtons, 1200);
+/* ===== End v28 ===== */
+
+
+window.v28PublishNow = v28PublishNow;
+window.v28DeleteQueueItem = v28DeleteQueueItem;
+window.v28ClearQueue = v28ClearQueue;
+
+
+/* ===== v29 Final Queue Delete Fix ===== */
+function v29GetQueue(){
+  try{
+    if(Array.isArray(queue)) return queue;
+  }catch(e){}
+
+  try{
+    const q1 = JSON.parse(localStorage.getItem("virall_queue") || "[]");
+    if(Array.isArray(q1)) return q1;
+  }catch(e){}
+
+  try{
+    const q2 = JSON.parse(localStorage.getItem("virall_queue_data") || "[]");
+    if(Array.isArray(q2)) return q2;
+  }catch(e){}
+
+  return [];
+}
+
+function v29SetQueue(newQueue){
+  try{ queue = newQueue; }catch(e){ window.queue = newQueue; }
+
+  try{ localStorage.setItem("virall_queue", JSON.stringify(newQueue)); }catch(e){}
+  try{ localStorage.setItem("virall_queue_data", JSON.stringify(newQueue)); }catch(e){}
+  try{ localStorage.setItem("virall_autopilot_queue", JSON.stringify(newQueue)); }catch(e){}
+  try{ localStorage.setItem("queue", JSON.stringify(newQueue)); }catch(e){}
+
+  try{
+    const settingsObj = JSON.parse(localStorage.getItem("virall_settings_data") || "{}");
+    settingsObj.queue = newQueue;
+    localStorage.setItem("virall_settings_data", JSON.stringify(settingsObj));
+  }catch(e){}
+
+  try{
+    if(typeof saveAllData === "function") saveAllData();
+    if(window.__virallStore && typeof window.__virallStore.save === "function") window.__virallStore.save();
+    if(typeof v17SaveEverything === "function") v17SaveEverything();
+  }catch(e){}
+
+  setTimeout(()=>{
+    try{
+      if(typeof renderAll === "function") renderAll();
+    }catch(e){}
+  },50);
+}
+
+function v29DeleteQueueItem(index){
+  const q = v29GetQueue();
+
+  if(!q.length){
+    alert("لا توجد عناصر في الجدولة");
+    return;
+  }
+
+  if(index < 0 || index >= q.length){
+    alert("لم يتم العثور على هذا العنصر");
+    return;
+  }
+
+  if(!confirm("حذف هذا الفيديو من الجدولة؟")) return;
+
+  q.splice(index, 1);
+  v29SetQueue(q);
+
+  setTimeout(v29InjectQueueControls, 300);
+}
+
+function v29ClearQueue(){
+  const q = v29GetQueue();
+
+  if(!q.length){
+    alert("لا توجد فيديوهات في الجدولة");
+    return;
+  }
+
+  if(!confirm("حذف كل الفيديوهات من الجدولة؟")) return;
+
+  v29SetQueue([]);
+  setTimeout(v29InjectQueueControls, 300);
+  alert("تم حذف كل الجدولة");
+}
+
+function v29InjectQueueControls(){
+  try{
+    // remove duplicate old delete buttons to prevent double actions
+    document.querySelectorAll(".v28-delete-queue, .delete-queue-item-btn").forEach(btn=>{
+      if(!btn.classList.contains("v29-delete-queue")) btn.remove();
+    });
+
+    document.querySelectorAll(".v28-clear-queue, .clear-queue-btn").forEach(btn=>{
+      if(!btn.classList.contains("v29-clear-queue")) btn.remove();
+    });
+
+    const q = v29GetQueue();
+
+    const queueHeader = Array.from(document.querySelectorAll("div,section,main")).find(el=>{
+      const txt = el.textContent || "";
+      return txt.includes("Autopilot Queue") && txt.includes("إعادة بناء Queue");
+    }) || document.body;
+
+    if(q.length && !document.querySelector(".v29-clear-queue")){
+      const clearBtn = document.createElement("button");
+      clearBtn.className = "v29-clear-queue";
+      clearBtn.type = "button";
+      clearBtn.textContent = "حذف كل الجدولة";
+      clearBtn.onclick = (e)=>{ e.preventDefault(); e.stopPropagation(); v29ClearQueue(); };
+      queueHeader.prepend(clearBtn);
+    }
+
+    const cards = Array.from(document.querySelectorAll("div")).filter(el=>{
+      const txt = el.textContent || "";
+      return (
+        (txt.includes("مجدول تلقائياً") || txt.includes("published") || txt.includes("جاهز للنشر")) &&
+        (txt.includes("mp4") || txt.includes("رسمي"))
+      );
+    });
+
+    cards.forEach((card, index)=>{
+      if(index >= q.length) return;
+      if(card.querySelector(".v29-delete-queue")) return;
+
+      const btn = document.createElement("button");
+      btn.className = "v29-delete-queue";
+      btn.type = "button";
+      btn.textContent = "حذف من الجدولة";
+      btn.onclick = (e)=>{
+        e.preventDefault();
+        e.stopPropagation();
+        v29DeleteQueueItem(index);
+      };
+
+      card.appendChild(btn);
+    });
+
+  }catch(err){
+    console.error("v29 queue controls error", err);
+  }
+}
+
+setInterval(v29InjectQueueControls, 1000);
+
+window.v29DeleteQueueItem = v29DeleteQueueItem;
+window.v29ClearQueue = v29ClearQueue;
+/* ===== End v29 Final Queue Delete Fix ===== */
+
+
+/* ===== v30 Auto Hook Render Before Cloudinary ===== */
+const V30_HOOKS = [
+  "هذا العطر خطير بصراحة 😮",
+  "إذا تحب الفخامة هذا لك",
+  "الناس صارت تسأل عنه كثير",
+  "العطر اللي يثبت حضورك",
+  "من أول رشة بتحس بالفرق",
+  "هذا مو إعلان عادي 😉",
+  "ريحته فخمة بشكل مو طبيعي",
+  "العرض هذا ما يتفوت",
+  "اختيار قوي لعشاق الفخامة",
+  "العطر اللي ينقص مجموعتك"
+];
+
+function v30PickHook(fileName){
+  const seed = String(fileName || Date.now()).split("").reduce((a,c)=>a+c.charCodeAt(0),0);
+  return V30_HOOKS[seed % V30_HOOKS.length];
+}
+
+function v30GetHookSettings(){
+  try{
+    const saved = JSON.parse(localStorage.getItem("virall_hook_settings") || "{}");
+    return {
+      enabled: saved.enabled !== false,
+      fontSize: saved.fontSize || 54,
+      duration: saved.duration || 4,
+      top: saved.top || 90,
+      maxWidth: saved.maxWidth || 0.86,
+      background: saved.background !== false
+    };
+  }catch(e){
+    return {enabled:true,fontSize:54,duration:4,top:90,maxWidth:0.86,background:true};
+  }
+}
+
+function v30SaveHookSettings(settings){
+  localStorage.setItem("virall_hook_settings", JSON.stringify(settings));
+}
+
+function v30RoundedRect(ctx,x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+}
+
+function v30WrapText(ctx,text,maxWidth){
+  const words = String(text || "").split(/\s+/);
+  const lines = [];
+  let line = "";
+  for(const word of words){
+    const test = line ? line + " " + word : word;
+    if(ctx.measureText(test).width > maxWidth && line){
+      lines.push(line);
+      line = word;
+    }else{
+      line = test;
+    }
+  }
+  if(line) lines.push(line);
+  return lines.slice(0,3);
+}
+
+async function v30RenderVideoWithHook(file, hookText){
+  const settings = v30GetHookSettings();
+  if(!settings.enabled) return {blob:file, hook:hookText, rendered:false};
+
+  return new Promise((resolve,reject)=>{
+    const video = document.createElement("video");
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = "auto";
+    video.src = URL.createObjectURL(file);
+
+    video.onloadedmetadata = async ()=>{
+      try{
+        const width = video.videoWidth || 1080;
+        const height = video.videoHeight || 1920;
+        const canvas = document.createElement("canvas");
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        const stream = canvas.captureStream(30);
+        const mimeOptions = ["video/webm;codecs=vp9","video/webm;codecs=vp8","video/webm"];
+        const mimeType = mimeOptions.find(t=>MediaRecorder.isTypeSupported(t)) || "video/webm";
+        const recorder = new MediaRecorder(stream,{mimeType});
+        const chunks = [];
+        recorder.ondataavailable = e => { if(e.data && e.data.size) chunks.push(e.data); };
+        recorder.onerror = e => reject(e.error || e);
+        recorder.onstop = ()=>{
+          URL.revokeObjectURL(video.src);
+          resolve({blob:new Blob(chunks,{type:mimeType}), hook:hookText, rendered:true, mimeType});
+        };
+
+        let start = performance.now();
+        function draw(){
+          if(video.ended || video.paused){
+            try{ recorder.stop(); }catch(e){}
+            return;
+          }
+          ctx.drawImage(video,0,0,width,height);
+          const elapsed = (performance.now()-start)/1000;
+          if(elapsed <= settings.duration){
+            const fs = Math.max(28, Math.round((width/1080)*settings.fontSize));
+            ctx.font = `900 ${fs}px Arial, sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            const lines = v30WrapText(ctx, hookText, width*settings.maxWidth);
+            const lh = fs*1.22, px = fs*.65, py = fs*.45;
+            const tw = Math.min(width*settings.maxWidth, Math.max(...lines.map(l=>ctx.measureText(l).width), 200));
+            const bw = tw + px*2, bh = lines.length*lh + py*2;
+            const x = (width-bw)/2, y = settings.top;
+            if(settings.background){
+              ctx.save();
+              ctx.globalAlpha=.78;
+              ctx.fillStyle="rgba(0,0,0,.72)";
+              v30RoundedRect(ctx,x,y,bw,bh,Math.round(fs*.35));
+              ctx.fill();
+              ctx.restore();
+              ctx.strokeStyle="rgba(255,255,255,.35)";
+              ctx.lineWidth=Math.max(2,fs*.035);
+              v30RoundedRect(ctx,x,y,bw,bh,Math.round(fs*.35));
+              ctx.stroke();
+            }
+            ctx.fillStyle="#fff";
+            ctx.shadowColor="rgba(0,0,0,.75)";
+            ctx.shadowBlur=18;
+            ctx.shadowOffsetY=5;
+            lines.forEach((line,idx)=>ctx.fillText(line,width/2,y+py+(idx+.5)*lh));
+            ctx.shadowBlur=0;
+          }
+          requestAnimationFrame(draw);
+        }
+        recorder.start(1000);
+        await video.play();
+        draw();
+      }catch(err){ reject(err); }
+    };
+    video.onerror = ()=>reject(new Error("فشل قراءة الفيديو للدمج"));
+  });
+}
+
+async function v30UploadRenderedVideo(file){
+  const hook = v30PickHook(file.name);
+  alert("جاري دمج الهوك تلقائياً فوق الفيديو ثم رفع النسخة النهائية إلى Cloudinary.");
+  const rendered = await v30RenderVideoWithHook(file, hook);
+  const finalFile = new File([rendered.blob], file.name.replace(/\.[^.]+$/,"") + "_hooked.webm", {type: rendered.blob.type || "video/webm"});
+  const localUrl = URL.createObjectURL(finalFile);
+  const tempVideo = {
+    id:"v_"+Date.now()+"_"+Math.random().toString(16).slice(2),
+    name:finalFile.name,
+    originalName:file.name,
+    size:finalFile.size,
+    type:finalFile.type,
+    url:localUrl,
+    localUrl,
+    hook,
+    caption:hook,
+    cloudinaryUrl:"",
+    uploadedToCloudinary:false,
+    renderedWithHook:rendered.rendered,
+    status:"uploading_to_cloudinary",
+    createdAt:new Date().toISOString()
+  };
+  videos.push(tempVideo);
+  try{ if(typeof saveAllData==="function") saveAllData(); }catch(e){}
+  try{ if(typeof renderAll==="function") renderAll(); }catch(e){}
+
+  try{
+    const uploaded = await uploadVideoToCloudinary(finalFile);
+    tempVideo.cloudinaryRawUrl = uploaded.cloudinaryUrl;
+    tempVideo.url = cloudinaryMp4Url(uploaded.cloudinaryUrl);
+    tempVideo.cloudinaryUrl = cloudinaryMp4Url(uploaded.cloudinaryUrl);
+    tempVideo.publicId = uploaded.publicId;
+    tempVideo.duration = uploaded.duration;
+    tempVideo.bytes = uploaded.bytes;
+    tempVideo.format = uploaded.format;
+    tempVideo.resourceType = uploaded.resourceType;
+    tempVideo.uploadedToCloudinary = true;
+    tempVideo.status = "ready";
+    tempVideo.compatible = true;
+    try{ if(typeof saveAllData==="function") saveAllData(); }catch(e){}
+    try{ if(typeof renderAll==="function") renderAll(); }catch(e){}
+    alert("تم دمج الهوك ورفع الفيديو النهائي إلى Cloudinary MP4 ✅");
+    return tempVideo;
+  }catch(err){
+    tempVideo.status="cloudinary_failed";
+    tempVideo.error=err.message || String(err);
+    try{ if(typeof saveAllData==="function") saveAllData(); }catch(e){}
+    try{ if(typeof renderAll==="function") renderAll(); }catch(e){}
+    alert("فشل رفع الفيديو النهائي: "+tempVideo.error);
+    return tempVideo;
+  }
+}
+
+try{
+  if(typeof handleVideoFileWithCloudinary === "function"){
+    handleVideoFileWithCloudinary = v30UploadRenderedVideo;
+  }
+}catch(e){}
+
+function v30InjectHookSettingsButton(){
+  try{
+    if(document.querySelector(".v30-hook-settings")) return;
+    const btn=document.createElement("button");
+    btn.className="v30-hook-settings";
+    btn.textContent="إعدادات الهوك التلقائي";
+    btn.onclick=()=>{
+      const cur=v30GetHookSettings();
+      const fontSize=prompt("حجم خط الهوك",cur.fontSize);
+      const duration=prompt("مدة ظهور الهوك بالثواني",cur.duration);
+      const top=prompt("موقع الهوك من الأعلى",cur.top);
+      v30SaveHookSettings({...cur,fontSize:Number(fontSize)||cur.fontSize,duration:Number(duration)||cur.duration,top:Number(top)||cur.top});
+      alert("تم حفظ إعدادات الهوك");
+    };
+    document.body.appendChild(btn);
+  }catch(e){}
+}
+setInterval(v30InjectHookSettingsButton,1500);
+/* ===== End v30 Auto Hook Render ===== */
+
+
+/* ===== v31 Smart Daily Scheduler ===== */
+function v31GetScheduleSettings(){
+  try{
+    const saved = JSON.parse(localStorage.getItem("virall_schedule_settings") || "{}");
+    return {
+      postsPerAccountPerDay: Number(saved.postsPerAccountPerDay) || 3,
+      times: Array.isArray(saved.times) && saved.times.length ? saved.times : ["08:00","14:00","20:00"],
+      startDate: saved.startDate || new Date().toISOString().slice(0,10)
+    };
+  }catch(e){
+    return {postsPerAccountPerDay:3,times:["08:00","14:00","20:00"],startDate:new Date().toISOString().slice(0,10)};
+  }
+}
+
+function v31SaveScheduleSettings(settings){
+  localStorage.setItem("virall_schedule_settings", JSON.stringify(settings));
+}
+
+function v31DateAdd(dateStr, days){
+  const d = new Date(dateStr + "T00:00:00");
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0,10);
+}
+
+function v31GetOfficialAccounts(){
+  const list = (accounts || []).filter(a => a.official);
+  return list.length ? list : (accounts || []);
+}
+
+function v31VideoAlreadyQueued(video){
+  const vid = video.id || video.name || video.cloudinaryUrl || video.url;
+  return (queue || []).some(q => {
+    return q.videoId === video.id || q.video === video.name || q.videoUrl === video.cloudinaryUrl || q.videoUrl === video.url || q.sourceKey === vid;
+  });
+}
+
+function v31BuildSmartQueue(){
+  const settings = v31GetScheduleSettings();
+  const officialAccounts = v31GetOfficialAccounts();
+
+  if(!officialAccounts.length){
+    alert("لا يوجد حسابات مربوطة للجدولة");
+    return;
+  }
+
+  const readyVideos = (videos || []).filter(v => {
+    const url = v.cloudinaryUrl || v.url;
+    return url && v.status !== "cloudinary_failed" && !v31VideoAlreadyQueued(v);
+  });
+
+  if(!readyVideos.length){
+    alert("لا توجد فيديوهات جديدة جاهزة للجدولة");
+    return;
+  }
+
+  if(!Array.isArray(queue)){
+    try{ queue = []; }catch(e){ window.queue = []; }
+  }
+
+  let videoIndex = 0;
+  let dayOffset = 0;
+  const perDay = Math.max(1, settings.postsPerAccountPerDay);
+  const times = settings.times.slice(0, perDay);
+
+  while(videoIndex < readyVideos.length){
+    const day = v31DateAdd(settings.startDate, dayOffset);
+
+    for(const account of officialAccounts){
+      for(let slot=0; slot<perDay; slot++){
+        if(videoIndex >= readyVideos.length) break;
+
+        const video = readyVideos[videoIndex++];
+        const time = times[slot] || settings.times[slot % settings.times.length] || "08:00";
+
+        queue.push({
+          id: "q_" + Date.now() + "_" + Math.random().toString(16).slice(2),
+          videoId: video.id,
+          sourceKey: video.id || video.name || video.cloudinaryUrl || video.url,
+          video: video.name || "Video",
+          videoUrl: cloudinaryMp4Url(video.cloudinaryUrl || video.url),
+          caption: video.caption || video.hook || "",
+          hook: video.hook || "",
+          accountId: account.id || account.instagramId,
+          account: account.name || account.user || account.username || "Instagram",
+          username: account.user || account.username || "",
+          scheduledDate: day,
+          scheduledTime: time,
+          scheduledAt: day + "T" + time + ":00",
+          status: "scheduled",
+          createdAt: new Date().toISOString()
+        });
+      }
+    }
+
+    dayOffset++;
+  }
+
+  v31SaveQueue();
+  if(typeof renderAll === "function") renderAll();
+  setTimeout(v31InjectSchedulerControls,300);
+
+  alert("تم توزيع الفيديوهات على الجدولة الذكية: " + readyVideos.length + " فيديو.");
+}
+
+function v31SaveQueue(){
+  try{ localStorage.setItem("virall_queue", JSON.stringify(queue || [])); }catch(e){}
+  try{ localStorage.setItem("virall_queue_data", JSON.stringify(queue || [])); }catch(e){}
+  try{ localStorage.setItem("virall_autopilot_queue", JSON.stringify(queue || [])); }catch(e){}
+  try{ if(typeof saveAllData === "function") saveAllData(); }catch(e){}
+  try{ if(window.__virallStore && typeof window.__virallStore.save === "function") window.__virallStore.save(); }catch(e){}
+  try{ if(typeof v17SaveEverything === "function") v17SaveEverything(); }catch(e){}
+}
+
+function v31OpenScheduleSettings(){
+  const cur = v31GetScheduleSettings();
+
+  const perDay = prompt("كم فيديو يومياً لكل حساب؟", cur.postsPerAccountPerDay);
+  if(perDay === null) return;
+
+  const times = prompt("أوقات النشر اليومية مفصولة بفاصلة، مثال: 08:00,14:00,20:00", cur.times.join(","));
+  if(times === null) return;
+
+  const startDate = prompt("تاريخ بداية الجدولة YYYY-MM-DD", cur.startDate);
+  if(startDate === null) return;
+
+  const parsedTimes = times.split(",").map(t=>t.trim()).filter(Boolean);
+
+  v31SaveScheduleSettings({
+    postsPerAccountPerDay: Math.max(1, Number(perDay) || 3),
+    times: parsedTimes.length ? parsedTimes : ["08:00","14:00","20:00"],
+    startDate: startDate || new Date().toISOString().slice(0,10)
+  });
+
+  alert("تم حفظ إعدادات الجدولة الذكية");
+}
+
+function v31InjectSchedulerControls(){
+  try{
+    const queueArea = Array.from(document.querySelectorAll("div,section,main")).find(el=>{
+      const txt = el.textContent || "";
+      return txt.includes("Autopilot Queue") && txt.includes("إعادة بناء Queue");
+    }) || Array.from(document.querySelectorAll("div,section,main")).find(el => (el.textContent||"").includes("Autopilot Queue"));
+
+    if(!queueArea) return;
+
+    if(!document.querySelector(".v31-smart-schedule")){
+      const box = document.createElement("div");
+      box.className = "v31-scheduler-box";
+
+      const settings = v31GetScheduleSettings();
+
+      const info = document.createElement("div");
+      info.className = "v31-scheduler-info";
+      info.textContent = `الجدولة الذكية: ${settings.postsPerAccountPerDay} فيديو يومياً لكل حساب — الأوقات: ${settings.times.join(" / ")}`;
+
+      const buildBtn = document.createElement("button");
+      buildBtn.className = "v31-smart-schedule";
+      buildBtn.type = "button";
+      buildBtn.textContent = "توزيع الفيديوهات تلقائياً";
+      buildBtn.onclick = (e)=>{ e.preventDefault(); e.stopPropagation(); v31BuildSmartQueue(); };
+
+      const settingsBtn = document.createElement("button");
+      settingsBtn.className = "v31-schedule-settings";
+      settingsBtn.type = "button";
+      settingsBtn.textContent = "إعدادات الجدولة";
+      settingsBtn.onclick = (e)=>{ e.preventDefault(); e.stopPropagation(); v31OpenScheduleSettings(); };
+
+      box.appendChild(info);
+      box.appendChild(buildBtn);
+      box.appendChild(settingsBtn);
+
+      queueArea.prepend(box);
+    }
+
+    document.querySelectorAll(".queue-item").forEach((card,index)=>{
+      const item = (queue || [])[index];
+      if(!item || card.querySelector(".v31-scheduled-at")) return;
+      const badge = document.createElement("div");
+      badge.className = "v31-scheduled-at";
+      badge.textContent = `موعد النشر: ${item.scheduledDate || ""} ${item.scheduledTime || ""}`;
+      card.appendChild(badge);
+    });
+  }catch(err){
+    console.error("v31 scheduler inject error", err);
+  }
+}
+
+setInterval(v31InjectSchedulerControls, 1200);
+
+window.v31BuildSmartQueue = v31BuildSmartQueue;
+window.v31OpenScheduleSettings = v31OpenScheduleSettings;
+/* ===== End v31 Smart Daily Scheduler ===== */
