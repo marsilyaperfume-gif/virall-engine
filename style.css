@@ -345,46 +345,47 @@
   cursor:pointer;
 }
 
-/* v31 Smart Scheduler */
-.v31-scheduler-box{
+/* ===== v32 Final Layout + Queue Controls ===== */
+.v32-scheduler-toolbar{
+  width:calc(100% - 36px);
+  max-width:100%;
+  box-sizing:border-box;
+  margin:0 18px 18px 18px;
+  padding:16px;
+  border-radius:18px;
   display:flex;
   align-items:center;
-  gap:12px;
+  justify-content:space-between;
   flex-wrap:wrap;
-  padding:16px;
-  margin-bottom:16px;
-  border-radius:18px;
-  background:rgba(255,255,255,.06);
+  gap:12px;
+  background:rgba(255,255,255,.055);
   border:1px solid rgba(255,255,255,.12);
+  overflow:hidden;
 }
-.v31-scheduler-info{
-  font-weight:800;
+.v32-scheduler-title{
   color:#dbeafe;
+  font-weight:900;
+  font-size:14px;
+  line-height:1.8;
   flex:1;
   min-width:260px;
 }
-.v31-smart-schedule,
-.v31-schedule-settings{
-  border:none;
-  border-radius:14px;
-  padding:11px 18px;
-  font-weight:900;
-  color:#fff;
-  cursor:pointer;
+.v32-scheduler-actions{display:flex;gap:10px;flex-wrap:wrap;}
+.v32-build,.v32-settings,.v32-clear,.v32-delete-one{
+  border:none;border-radius:14px;padding:10px 15px;font-weight:900;color:#fff;cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center;width:auto !important;min-width:auto !important;max-width:max-content !important;
+  position:relative !important;right:auto !important;left:auto !important;
 }
-.v31-smart-schedule{
-  background:linear-gradient(135deg,#16a34a,#22c55e);
+.v32-build{background:linear-gradient(135deg,#16a34a,#22c55e);}
+.v32-settings{background:linear-gradient(135deg,#7c3aed,#0ea5e9);}
+.v32-clear{background:linear-gradient(135deg,#7f1d1d,#ef4444);}
+.v32-delete-one{background:linear-gradient(135deg,#dc2626,#fb7185);margin-top:12px;}
+.v32-time-badge{
+  margin-top:10px;display:inline-flex;padding:8px 12px;border-radius:999px;color:#bfdbfe;
+  background:rgba(59,130,246,.14);border:1px solid rgba(147,197,253,.25);font-weight:800;font-size:13px;
 }
-.v31-schedule-settings{
-  background:linear-gradient(135deg,#7c3aed,#0ea5e9);
+.v28-delete-queue,.v29-delete-queue,.delete-queue-item-btn,.v28-clear-queue,.v29-clear-queue,.clear-queue-btn{
+  width:auto !important;max-width:max-content !important;
 }
-.v31-scheduled-at{
-  margin-top:10px;
-  display:inline-flex;
-  padding:8px 12px;
-  border-radius:999px;
-  color:#bfdbfe;
-  background:rgba(59,130,246,.14);
-  border:1px solid rgba(147,197,253,.25);
-  font-weight:800;
-}
+body{overflow-x:hidden;}
+main,section{max-width:100%;}
