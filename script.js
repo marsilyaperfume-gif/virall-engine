@@ -1,39 +1,1439 @@
 
-const $=id=>document.getElementById(id);
-let state={loggedIn:false,accounts:[],originals:[],edited:[],queue:[],settings:{cloudName:"",uploadPreset:"",hookFontSize:54,hookTop:90,hookDuration:4,postsPerDay:3,publishTimes:["08:00","14:00","20:00"],scheduleStart:new Date().toISOString().slice(0,10)}};
-const STORE="marrsile_clean_hook_pipeline_v1";
-const hooks=["هذا العطر خطير بصراحة 😮","إذا تحب الفخامة هذا لك","الناس صارت تسأل عنه كثير","العطر اللي يثبت حضورك","من أول رشة بتحس بالفرق","هذا مو إعلان عادي 😉","ريحته فخمة بشكل مو طبيعي","العرض هذا ما يتفوت","اختيار قوي لعشاق الفخامة","العطر اللي ينقص مجموعتك","ريحة تعطيك ثقة طول اليوم","فخامة الخليج تبدأ من هنا","العطر اللي يخليك مميز","جربه مرة وبتفهم السر","هذا أكثر عطر عليه طلب"];
-function save(){try{localStorage.setItem(STORE,JSON.stringify(state))}catch(e){console.error(e)}}
-function load(){try{const s=JSON.parse(localStorage.getItem(STORE)||"null"); if(s) state={...state,...s,settings:{...state.settings,...(s.settings||{})}}}catch(e){}}
-function functionsBase(){return "/.netlify/functions"}
-async function parseJson(res){const t=await res.text();try{return JSON.parse(t)}catch(e){throw new Error("Non JSON: "+t.slice(0,120))}}
-function msg(t){alert(t)}
-function pickHook(n){const seed=String(n||Date.now()).split("").reduce((a,c)=>a+c.charCodeAt(0),0);return hooks[seed%hooks.length]}
-function switchTab(tab){document.querySelectorAll(".nav").forEach(b=>b.classList.toggle("active",b.dataset.tab===tab));document.querySelectorAll(".tab").forEach(s=>s.classList.toggle("active",s.id===tab))}
-function render(){ $("loginView").classList.toggle("hidden",state.loggedIn); $("appView").classList.toggle("hidden",!state.loggedIn); $("statAccounts").textContent=state.accounts.length;$("statOriginals").textContent=state.originals.length;$("statEdited").textContent=state.edited.length;$("statQueue").textContent=state.queue.length; $("cloudName").value=state.settings.cloudName||"";$("uploadPreset").value=state.settings.uploadPreset||"";$("hookFontSize").value=state.settings.hookFontSize;$("hookTop").value=state.settings.hookTop;$("hookDuration").value=state.settings.hookDuration;$("postsPerDay").value=state.settings.postsPerDay;$("publishTimes").value=state.settings.publishTimes.join(",");$("scheduleStart").value=state.settings.scheduleStart; renderAccounts();renderOriginals();renderEdited();renderQueue();}
-function renderAccounts(){$("accountsList").innerHTML=state.accounts.length?state.accounts.map(a=>`<div class="account-card"><b>${a.name||a.username||"Instagram"}</b><div>@${String(a.username||a.user||"").replace("@","")}</div><span class="badge ok">Officially Connected</span></div>`).join(""):"<p>لا توجد حسابات.</p>"}
-function renderOriginals(){$("originalVideos").innerHTML=state.originals.map((v,i)=>`<div class="video-card"><video src="${v.localUrl}" controls muted></video><h4>${v.name}</h4><span class="badge warn">أصلي - لا ينشر</span>${v.rendered?'<span class="badge ok">تم تعديله</span>':""}<div class="actions"><button class="primary" onclick="renderOne(${i})">تعديل بالهوك</button><button class="danger" onclick="deleteOriginal(${i})">حذف</button></div></div>`).join("")||"<p>ارفع الفيديوهات الأصلية.</p>"}
-function renderEdited(){$("editedVideos").innerHTML=state.edited.map((v,i)=>`<div class="video-card"><video src="${v.cloudinaryUrl||v.localUrl}" controls></video><h4>${v.name}</h4><div class="hook-label">${v.hook}</div>${v.cloudinaryUrl?'<span class="badge ok">Cloudinary ✅</span>':'<span class="badge warn">قيد الرفع</span>'}<div class="actions"><button class="primary" onclick="publishEdited(${i})">نشر الآن</button><button class="secondary" onclick="scheduleEdited(${i})">جدولة</button><button class="danger" onclick="deleteEdited(${i})">حذف</button></div></div>`).join("")||"<p>لا توجد فيديوهات معدلة.</p>"}
-function renderQueue(){$("queueList").innerHTML=state.queue.map((q,i)=>`<div class="queue-card"><div><b>${q.videoName}</b><div>${q.accountName}</div><span class="badge ok">${q.scheduledDate} ${q.scheduledTime}</span></div><div class="actions"><button class="primary" onclick="publishQueueItem(${i})">نشر الآن</button><button class="danger" onclick="deleteQueueItem(${i})">حذف</button></div></div>`).join("")||"<p>لا توجد جدولة.</p>"}
-function fileObj(f){return{id:"o_"+Date.now()+"_"+Math.random().toString(16).slice(2),name:f.name,size:f.size,type:f.type,file:f,localUrl:URL.createObjectURL(f),rendered:false}}
-function round(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
-function wrap(ctx,text,max){const words=String(text).split(/\s+/),lines=[];let line="";for(const w of words){const t=line?line+" "+w:w;if(ctx.measureText(t).width>max&&line){lines.push(line);line=w}else line=t}if(line)lines.push(line);return lines.slice(0,3)}
-async function renderVideo(original){const file=original.file;if(!file)throw new Error("الفيديو الأصلي غير متاح بعد تحديث الصفحة، أعد رفعه للتعديل.");const hook=pickHook(file.name);const s=state.settings;return new Promise((resolve,reject)=>{const video=document.createElement("video");video.muted=true;video.playsInline=true;video.src=URL.createObjectURL(file);video.onloadedmetadata=async()=>{try{const c=document.createElement("canvas");c.width=video.videoWidth||1080;c.height=video.videoHeight||1920;const ctx=c.getContext("2d");const stream=c.captureStream(30);const mime=["video/webm;codecs=vp9","video/webm;codecs=vp8","video/webm"].find(t=>MediaRecorder.isTypeSupported(t))||"video/webm";const rec=new MediaRecorder(stream,{mimeType:mime});const chunks=[];rec.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};rec.onstop=()=>{URL.revokeObjectURL(video.src);resolve({blob:new Blob(chunks,{type:mime}),hook,mime})};let start=performance.now();function frame(){if(video.ended||video.paused){try{rec.stop()}catch(e){};return}const w=c.width,h=c.height;ctx.drawImage(video,0,0,w,h);if((performance.now()-start)/1000<=Number(s.hookDuration||4)){const fs=Math.max(28,Math.round((w/1080)*Number(s.hookFontSize||54)));ctx.font=`900 ${fs}px Arial`;ctx.textAlign="center";ctx.textBaseline="middle";const lines=wrap(ctx,hook,w*.86),lh=fs*1.22,px=fs*.65,py=fs*.45;const tw=Math.min(w*.86,Math.max(...lines.map(l=>ctx.measureText(l).width),200));const bw=tw+px*2,bh=lines.length*lh+py*2,x=(w-bw)/2,y=Number(s.hookTop||90);ctx.fillStyle="rgba(0,0,0,.72)";round(ctx,x,y,bw,bh,Math.round(fs*.35));ctx.fill();ctx.strokeStyle="rgba(255,255,255,.35)";ctx.lineWidth=2;round(ctx,x,y,bw,bh,Math.round(fs*.35));ctx.stroke();ctx.fillStyle="#fff";ctx.shadowColor="rgba(0,0,0,.75)";ctx.shadowBlur=18;ctx.shadowOffsetY=5;lines.forEach((line,idx)=>ctx.fillText(line,w/2,y+py+(idx+.5)*lh));ctx.shadowBlur=0}requestAnimationFrame(frame)}rec.start(1000);await video.play();frame()}catch(e){reject(e)}};video.onerror=()=>reject(new Error("فشل قراءة الفيديو"))})}
-async function uploadCloudinary(file){const {cloudName,uploadPreset}=state.settings;if(!cloudName||!uploadPreset)throw new Error("أدخل Cloudinary في الإعدادات.");const fd=new FormData();fd.append("file",file);fd.append("upload_preset",uploadPreset);fd.append("folder","marrsile-hooked-reels");const res=await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/video/upload`,{method:"POST",body:fd});const data=await res.json();if(!res.ok)throw new Error(JSON.stringify(data));return data}
-async function renderOne(i){const original=state.originals[i];if(!original)return;$("renderProgress").textContent=`جاري تعديل: ${original.name}`;try{const r=await renderVideo(original);const final=new File([r.blob],original.name.replace(/\.[^.]+$/,"")+"_hooked.webm",{type:r.mime});const ed={id:"e_"+Date.now(),name:final.name,hook:r.hook,localUrl:URL.createObjectURL(final),cloudinaryUrl:"",status:"uploading"};state.edited.push(ed);original.rendered=true;save();render();$("renderProgress").textContent="جاري رفع Cloudinary";const up=await uploadCloudinary(final);ed.cloudinaryUrl=up.secure_url;ed.publicId=up.public_id;ed.status="ready";save();render();$("renderProgress").textContent=`تم تجهيز: ${ed.name}`}catch(e){$("renderProgress").textContent="فشل: "+(e.message||e);msg($("renderProgress").textContent)}}
-async function renderAll(){for(let i=0;i<state.originals.length;i++){if(!state.originals[i].rendered)await renderOne(i)}}
-async function publishObj(v){const acc=state.accounts[0];if(!acc)throw new Error("لا يوجد حساب مربوط.");if(!v.cloudinaryUrl)throw new Error("الفيديو غير مرفوع إلى Cloudinary.");const create=await fetch(functionsBase()+"/publish-reel",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({accountId:acc.id||acc.instagramId,videoUrl:v.cloudinaryUrl,caption:v.hook||""})});const cr=await parseJson(create);if(!create.ok)throw new Error(JSON.stringify(cr));for(let n=0;n<16;n++){await new Promise(r=>setTimeout(r,n?12000:25000));const fin=await fetch(functionsBase()+"/publish-complete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({accountId:acc.id||acc.instagramId,creationId:cr.creationId})});const done=await parseJson(fin);if(fin.ok&&done.ok)return done;if(fin.status===202||done.retry)continue;throw new Error(JSON.stringify(done))}throw new Error("Instagram لم يجهز الفيديو.")}
-async function publishEdited(i){try{msg("بدأ النشر...");await publishObj(state.edited[i]);msg("تم النشر بنجاح")}catch(e){msg("فشل النشر: "+(e.message||e))}}
-function nextSlot(index){const per=Number(state.settings.postsPerDay||3),times=state.settings.publishTimes,day=Math.floor(index/per),slot=index%per;const d=new Date(state.settings.scheduleStart+"T00:00:00");d.setDate(d.getDate()+day);return{scheduledDate:d.toISOString().slice(0,10),scheduledTime:times[slot%times.length]||"08:00"}}
-function scheduleEdited(i){const v=state.edited[i];const acc=state.accounts[0]||{name:"Instagram"};const s=nextSlot(state.queue.length);state.queue.push({...s,id:"q_"+Date.now(),videoName:v.name,videoUrl:v.cloudinaryUrl,hook:v.hook,accountId:acc.id||acc.instagramId,accountName:acc.name||acc.username||"Instagram"});save();render()}
-function scheduleAll(){state.edited.forEach((v,i)=>{if(!state.queue.some(q=>q.videoName===v.name))scheduleEdited(i)});save();render()}
-async function publishQueueItem(i){try{const q=state.queue[i];await publishObj({cloudinaryUrl:q.videoUrl,hook:q.hook});q.status="published";save();render();msg("تم النشر")}catch(e){msg("فشل النشر: "+(e.message||e))}}
-function deleteQueueItem(i){if(confirm("حذف من الجدولة؟")){state.queue.splice(i,1);save();render()}}
-function deleteOriginal(i){if(confirm("حذف؟")){state.originals.splice(i,1);save();render()}}
-function deleteEdited(i){if(confirm("حذف؟")){state.edited.splice(i,1);save();render()}}
-function clearQueue(){if(confirm("حذف كل الجدولة؟")){state.queue=[];save();render()}}
-function clearOriginals(){if(confirm("حذف كل الأصلية؟")){state.originals=[];save();render()}}
-function clearEdited(){if(confirm("حذف كل المعدلة؟")){state.edited=[];save();render()}}
-async function loadAccounts(){try{const res=await fetch(functionsBase()+"/accounts");const data=await parseJson(res);if(!res.ok)throw new Error(JSON.stringify(data));state.accounts=(data.accounts||[]).map(a=>({...a,official:true}));save();render();msg("تم تحديث الحسابات")}catch(e){msg("فشل الحسابات: "+(e.message||e))}}
-function bind(){document.querySelectorAll(".nav").forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));$("loginBtn").onclick=()=>{state.loggedIn=true;save();render()};$("logoutBtn").onclick=()=>{state.loggedIn=false;save();render()};$("connectInstagramBtn").onclick=()=>location.href=functionsBase()+"/auth-instagram";$("reloadAccountsBtn").onclick=loadAccounts;$("saveStorageBtn").onclick=()=>{state.settings.cloudName=$("cloudName").value.trim();state.settings.uploadPreset=$("uploadPreset").value.trim();save();msg("تم الحفظ")};$("saveHookBtn").onclick=()=>{state.settings.hookFontSize=Number($("hookFontSize").value)||54;state.settings.hookTop=Number($("hookTop").value)||90;state.settings.hookDuration=Number($("hookDuration").value)||4;save();msg("تم الحفظ")};$("saveScheduleBtn").onclick=()=>{state.settings.postsPerDay=Number($("postsPerDay").value)||3;state.settings.publishTimes=$("publishTimes").value.split(",").map(x=>x.trim()).filter(Boolean);state.settings.scheduleStart=$("scheduleStart").value||new Date().toISOString().slice(0,10);save();msg("تم الحفظ")};$("videoInput").onchange=e=>{Array.from(e.target.files||[]).filter(f=>f.type.startsWith("video/")).forEach(f=>state.originals.push(fileObj(f)));save();render();e.target.value=""};$("renderAllBtn").onclick=renderAll;$("clearOriginalsBtn").onclick=clearOriginals;$("clearEditedBtn").onclick=clearEdited;$("scheduleAllEditedBtn").onclick=scheduleAll;$("rebuildQueueBtn").onclick=scheduleAll;$("clearQueueBtn").onclick=clearQueue}
-load();bind();render();if(new URLSearchParams(location.search).get("connected")){loadAccounts();history.replaceState({},"",location.pathname)}setInterval(save,2000);
+(() => {
+  "use strict";
+
+  const $ = (id) => document.getElementById(id);
+  const rand = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+  const defaultSettings = {
+    hookType: "infinite",
+    hookPower: "high",
+    emojiMode: "balanced",
+    hookLength: "oneLine",
+    hookStyle: "bold",
+    fontSize: 36,
+    hookTop: 58,
+    boxWidth: 88,
+    hookOpacity: 82,
+    hookRadius: 17,
+    offerType: "discount",
+    ctaMode: "bio",
+    hashtags: "#عطور #Perfume #عطور_فاخرة",
+    captionFooter: "توصيل سريع · دفع عند الاستلام",
+    daily: 3,
+    times: ["08:00", "16:00", "00:00"],
+    autoHook: true,
+    autoCaption: true,
+    avoidRepeat: true,
+    abTesting: true,
+    smartRepost: true,
+    autoRetry: true,
+    backendUrl: "/.netlify/functions",
+    delayMode: "10-30",
+    delayMin: 10,
+    delayMax: 30,
+    cloudinaryCloudName: "",
+    cloudinaryUploadPreset: ""
+  };
+
+  let settings = loadSettings();
+  let videos = [];
+  let accounts = [];
+  let queue = [];
+  let selected = 0;
+  let autopilot = false;
+
+  const APP_STORE_KEY = "marrsile_growth_engine_v20_daily_scheduler";
+
+  function safeParseStore() {
+    try {
+      return JSON.parse(localStorage.getItem(APP_STORE_KEY) || "{}") || {};
+    } catch {
+      return {};
+    }
+  }
+
+  function persistAll() {
+    try {
+      const safeVideos = videos.map(v => ({
+        id: v.id,
+        name: v.name,
+        size: v.size,
+        type: v.type,
+        url: v.url || "",
+        publicUrl: v.publicUrl || "",
+        cloudinaryPublicId: v.cloudinaryPublicId || "",
+        hook: v.hook,
+        caption: v.caption,
+        status: v.status,
+        compatibility: v.compatibility,
+        compatibilityLabel: v.compatibilityLabel,
+        repairStatus: v.repairStatus,
+        postedTo: v.postedTo || []
+      }));
+      localStorage.setItem(APP_STORE_KEY, JSON.stringify({
+        loggedIn: $("app") && !$("app").classList.contains("hidden"),
+        settings,
+        accounts,
+        videos: safeVideos,
+        queue,
+        selected,
+        savedAt: new Date().toISOString()
+      }));
+    } catch (err) {
+      console.error("فشل حفظ البيانات", err);
+    }
+  }
+
+  function hydrateAll() {
+    const saved = safeParseStore();
+    if (saved.settings && typeof saved.settings === "object") {
+      settings = { ...settings, ...saved.settings };
+    }
+    if (Array.isArray(saved.accounts)) {
+      accounts = saved.accounts;
+    }
+    if (Array.isArray(saved.videos)) {
+      videos = saved.videos;
+    }
+    if (Array.isArray(saved.queue)) {
+      queue = saved.queue;
+    }
+    if (typeof saved.selected === "number") {
+      selected = saved.selected;
+    }
+    if (saved.loggedIn) {
+      $("loginScreen").classList.add("hidden");
+      $("app").classList.remove("hidden");
+    }
+  }
+
+  function persistAuth(loggedIn) {
+    const saved = safeParseStore();
+    saved.loggedIn = !!loggedIn;
+    localStorage.setItem(APP_STORE_KEY, JSON.stringify(saved));
+  }
+
+  async function uploadToCloudinary(file) {
+    const cloudName = (settings.cloudinaryCloudName || "").trim();
+    const uploadPreset = (settings.cloudinaryUploadPreset || "").trim();
+
+    if (!cloudName || !uploadPreset) {
+      return {
+        url: URL.createObjectURL(file),
+        publicUrl: "",
+        cloudinaryPublicId: "",
+        localOnly: true
+      };
+    }
+
+    const form = new FormData();
+    form.append("file", file);
+    form.append("upload_preset", uploadPreset);
+    form.append("folder", "marrsile-reels");
+
+    const endpoint = `https://api.cloudinary.com/v1_1/${encodeURIComponent(cloudName)}/video/upload`;
+    const res = await fetch(endpoint, { method: "POST", body: form });
+    const data = await res.json();
+
+    if (!res.ok || !data.secure_url) {
+      throw new Error(data.error?.message || "فشل رفع الفيديو إلى Cloudinary");
+    }
+
+    return {
+      url: data.secure_url,
+      publicUrl: data.secure_url,
+      cloudinaryPublicId: data.public_id || "",
+      localOnly: false
+    };
+  }
+
+  async function publishVideoNow(index) {
+    const video = videos[index];
+    if (!video) return alert("الفيديو غير موجود");
+
+    const officialAccounts = accounts.filter(a => a.official);
+    if (!officialAccounts.length) return alert("لا يوجد حساب رسمي مربوط");
+
+    const account = officialAccounts[0];
+    const videoUrl = video.publicUrl || video.url;
+
+    if (!videoUrl || String(videoUrl).startsWith("blob:")) {
+      return alert("لا يمكن النشر الآن لأن الفيديو ليس له رابط عام. احفظ Cloudinary ثم أعد رفع الفيديو.");
+    }
+
+    try {
+      const res = await fetch(functionsBase().replace(/\/$/, "") + "/publish-reel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountId: account.id,
+          videoUrl,
+          caption: video.caption || video.hook || settings.captionFooter || ""
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "فشل النشر");
+
+      video.status = "تم إرسال النشر";
+      video.postedTo = [...(video.postedTo || []), account.user || account.name];
+      persistAll();
+      renderAll();
+      alert("تم إرسال الفيديو إلى Instagram للنشر.");
+    } catch (err) {
+      console.error(err);
+      alert("فشل النشر: " + (err.message || err));
+    }
+  }
+
+  function scheduleVideoNow(index) {
+    const video = videos[index];
+    if (!video) return alert("الفيديو غير موجود");
+
+    const acc = accounts.find(a => a.official) || accounts[0];
+    if (!acc) return alert("أضف حساباً أولاً");
+
+    queue.push({
+      videoId: video.id,
+      video: video.name,
+      accountId: acc.id,
+      account: acc.name,
+      market: acc.market || "رسمي",
+      hook: video.hook,
+      caption: video.caption,
+      time: new Date(Date.now() + 5 * 60 * 1000).toLocaleTimeString("ar", { hour: "2-digit", minute: "2-digit" }),
+      status: "مجدول يدوياً"
+    });
+    persistAll();
+    renderAll();
+    alert("تمت جدولة الفيديو.");
+  }
+
+
+  const gulfHooks = [
+    "إذا سألوك وش حاط… لا تستغرب 😮‍💨",
+    "ريحة تخلي الكل يلتفت لك 🔥",
+    "مو طبيعي هالسعر على هالفخامة",
+    "هذا العطر يغيّر حضورك بالكامل",
+    "إذا ذوقك فخم، هذا لك",
+    "ريحة أغلى من سعرها بكثير",
+    "العطر اللي يخليهم يسألونك عنه",
+    "لا تدفع زيادة على نفس الفخامة",
+    "ثبات يفوز من أول رشة",
+    "هذا مو عطر… هذا هيبة",
+    "ريحة تدخل قبل كلامك",
+    "إذا تحب الفخامة الهادية شوف هذا",
+    "هذا العطر عليه كلام كثير 🔥",
+    "ريحة مستحيل تمر مرور عادي",
+    "كل اللي حولك بينتبهون",
+    "سعره صدمة بصراحة",
+    "لو تجرب هالعطر… بتفهم",
+    "العطر اللي ينقص مجموعتك",
+    "فخامة بدون مبالغة",
+    "هذا العطر يخليك غير",
+    "ريحة تعطيك ثقة طول اليوم",
+    "أقوى من اللي تتوقعه",
+    "مو لازم تدفع كثير عشان تفخم",
+    "إذا يهمك الثبات ركّز هنا",
+    "العطر اللي ما ينوصف بسهولة",
+    "ريحة تعلق بالذاكرة 😮‍💨",
+    "هذا النوع اللي الناس تلاحظه",
+    "لو مهتم بالعطور… شوف هذا",
+    "ريحة تعيش معك ساعات",
+    "فخم بشكل مو طبيعي",
+    "هذا العطر يخليك مميز",
+    "العرض هذا ما يتفوّت",
+    "كل رشة تعطي حضور",
+    "العطر اللي يلفت بدون ما يزعج",
+    "ريحة نظيفة وفخمة بنفس الوقت",
+    "إذا بتاخذ واحد… خذ هذا",
+    "من أول رشة بتحس بالفرق",
+    "الناس صارت تسأل عنه كثير",
+    "هذا العطر خطير بصراحة",
+    "ريحة تفتح النفس 🔥",
+    "لو تبي شيء يثبت… هذا هو",
+    "عطر يليق بالطلعات والمناسبات",
+    "فخامة واضحة من أول ثانية",
+    "هذا مو إعلان عادي 😏",
+    "العطر اللي يكمّل ستايلك",
+    "ريحة تحسسك بالفخامة",
+    "خلّك مختلف بريحتك",
+    "العطر اللي يعلق بالمخ",
+    "إذا فاتك… راحت عليك",
+    "خذ الفخامة بسعر ذكي"
+  ];
+
+  const captionOpeners = [
+    "اختيار فاخر لعشاق العطور العالمية",
+    "وصلت عروض قوية على العطور الأكثر طلباً",
+    "ريحة فخمة وسعر منافس لمحبي التميز",
+    "إذا كنت تبحث عن عطر يلفت الانتباه، هذا وقتك",
+    "عطور عالمية أصلية بأسعار ذكية",
+    "فخامة العطور العالمية أصبحت أقرب لك",
+    "عطر يرفع حضورك من أول رشة",
+    "لعشاق الروائح الراقية والثبات القوي",
+    "عرض اليوم مخصص للي يحبون العطور الفخمة",
+    "تجربة عطر عالمية بسعر يناسبك"
+  ];
+
+  const captionBenefits = [
+    "توصيل سريع",
+    "دفع عند الاستلام",
+    "عروض لفترة محدودة",
+    "أسعار منافسة",
+    "خيارات تناسب الهدايا والاستخدام اليومي",
+    "روائح فاخرة تناسب الذوق الخليجي",
+    "تشكيلة مختارة بعناية",
+    "كمية محدودة على المنتجات الأكثر طلباً",
+    "تجربة تسوق سهلة وسريعة",
+    "منتجات مختارة لمحبي الفخامة"
+  ];
+
+  const captionCTAs = [
+    "اطلب الآن من الرابط في البايو",
+    "شوف التشكيلة كاملة من الرابط في البايو",
+    "لا تنتظر نفاد الكمية واطلب الآن",
+    "اختر عطرك المفضل اليوم",
+    "تسوق الآن وخذ عطرك قبل انتهاء العرض",
+    "اضغط الرابط في البايو وشوف الأسعار",
+    "اطلب عطرك الآن وخلك جاهز للمناسبة",
+    "استغل العرض اليوم",
+    "خل عطرك القادم يكون فخم وبسعر ذكي",
+    "ابدأ بطلبك الآن"
+  ];
+
+  function loadSettings() {
+    try {
+      return { ...defaultSettings, ...JSON.parse(localStorage.getItem("marrsile_v105_settings") || "{}") };
+    } catch {
+      return { ...defaultSettings };
+    }
+  }
+
+  function saveSettings() {
+    localStorage.setItem("marrsile_v105_settings", JSON.stringify(settings));
+  }
+
+  function setupPublishNowDelegation() {
+    document.addEventListener("click", (e) => {
+      const btn = e.target && e.target.closest ? e.target.closest("[data-publish-now]") : null;
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      publishNowFromQueue(Number(btn.dataset.publishNow));
+    });
+  }
+
+  function bind() {
+    $("loginBtn").addEventListener("click", login);
+    $("uploadBtn").addEventListener("click", pickVideos);
+    $("uploadBtn2").addEventListener("click", pickVideos);
+    $("videoInput").addEventListener("change", addVideos);
+    $("dropZone").addEventListener("click", pickVideos);
+    $("dropZone").addEventListener("dragover", (e) => { e.preventDefault(); $("dropZone").classList.add("drag"); });
+    $("dropZone").addEventListener("dragleave", () => $("dropZone").classList.remove("drag"));
+    $("dropZone").addEventListener("drop", (e) => {
+      e.preventDefault();
+      $("dropZone").classList.remove("drag");
+      addFiles(Array.from(e.dataTransfer.files || []));
+    });
+
+    document.querySelectorAll("[data-tab]").forEach(btn => btn.addEventListener("click", () => openTab(btn.dataset.tab)));
+    document.querySelectorAll("[data-open]").forEach(btn => btn.addEventListener("click", () => openTab(btn.dataset.open)));
+
+    ["hookType","hookPower","emojiMode","hookLength","hookStyle","fontSize","hookTop","boxWidth","hookOpacity","hookRadius","offerType","ctaMode","hashtags","captionFooter"].forEach(id => {
+      $(id).addEventListener("input", () => { readSettingsFromUI(); applyLook(); });
+      $(id).addEventListener("change", () => { readSettingsFromUI(); applyLook(); });
+    });
+
+    ["autoHook","autoCaption","avoidRepeat","abTesting","smartRepost","autoRetry"].forEach(id => {
+      $(id).addEventListener("change", readSettingsFromUI);
+    });
+
+    $("demoHookBtn").addEventListener("click", () => {
+      const h = makeHook();
+      setPreviewHook(h);
+    });
+    $("saveControlBtn").addEventListener("click", () => {
+      readSettingsFromUI();
+      applySettingsToAll();
+      alert("تم حفظ الإعدادات وتطبيقها");
+    });
+    $("saveAndRunBtn").addEventListener("click", () => {
+      readSettingsFromUI();
+      applySettingsToAll();
+      startAutopilot();
+    });
+    $("dailyMinus").addEventListener("click", () => changeDaily(-1));
+    $("dailyPlus").addEventListener("click", () => changeDaily(1));
+    $("addTimeBtn").addEventListener("click", addTime);
+    $("applyAllBtn").addEventListener("click", applySettingsToAll);
+    $("regenSelectedBtn").addEventListener("click", regenSelected);
+    $("addAccountBtn").addEventListener("click", addAccount);
+    $("connectInstagramBtn").addEventListener("click", connectInstagramOfficial);
+    $("refreshOfficialAccountsBtn").addEventListener("click", loadOfficialAccounts);
+    $("factoryBtn").addEventListener("click", renderHookFactory);
+    $("startAutoBtn").addEventListener("click", startAutopilot);
+    $("queueRunBtn").addEventListener("click", startAutopilot);
+    $("saveBackendBtn").addEventListener("click", () => {
+      settings.backendUrl = $("backendUrl").value.trim();
+      saveSettings();
+      persistAll();
+      alert("تم حفظ رابط Backend محلياً");
+    });
+    if ($("saveStorageBtn")) {
+      $("saveStorageBtn").addEventListener("click", () => {
+        settings.cloudinaryCloudName = $("cloudinaryCloudName").value.trim();
+        settings.cloudinaryUploadPreset = $("cloudinaryUploadPreset").value.trim();
+        saveSettings();
+        persistAll();
+        alert("تم حفظ بيانات Cloudinary");
+      });
+    }
+    $("scanVideosBtn").addEventListener("click", scanAllVideos);
+    $("repairVideosBtn").addEventListener("click", repairIncompatibleVideos);
+    $("forceRepairBtn").addEventListener("click", forceRepairAllVideos);
+    $("autoRepair").addEventListener("change", () => {
+      settings.autoRepair = $("autoRepair").checked;
+      saveSettings();
+    });
+
+    $("previewPlayBtn").addEventListener("click", togglePreviewPlayback);
+    $("previewBackBtn").addEventListener("click", () => seekPreview(-5));
+    $("previewForwardBtn").addEventListener("click", () => seekPreview(5));
+    $("previewMuteBtn").addEventListener("click", togglePreviewMute);
+    $("previewSeek").addEventListener("input", seekPreviewBar);
+    $("settingsVideo").addEventListener("timeupdate", updatePreviewTime);
+    $("settingsVideo").addEventListener("loadedmetadata", updatePreviewTime);
+
+
+    $("videoHook").addEventListener("input", manualVideoEdit);
+    $("videoCaption").addEventListener("input", manualVideoEdit);
+  }
+
+  function finishLogin() {
+    $("loginScreen").classList.add("hidden");
+    $("app").classList.remove("hidden");
+    hydrateAll();
+    persistAuth(true);
+    renderAll();
+  }
+
+  function isLocalPreview() {
+    return location.protocol === "file:" || ["localhost", "127.0.0.1", ""].includes(location.hostname);
+  }
+
+  async function login() {
+    const email = $("email").value.trim();
+    const password = $("password").value.trim();
+    if (!email || !password) return alert("أدخل البريد وكلمة السر");
+
+    try {
+      const res = await fetch(functionsBase().replace(/\/$/, "") + "/auth-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error(data.error || "بيانات الدخول غير صحيحة");
+      finishLogin();
+    } catch (err) {
+      // Netlify Functions لا تعمل عند فتح index.html مباشرة من الجهاز.
+      // هذا fallback فقط للمعاينة المحلية حتى لا يظهر Failed to fetch.
+      if (isLocalPreview() && email === "info@marrsile.com" && password === "Mo774853") {
+        finishLogin();
+        return;
+      }
+      alert("فشل تسجيل الدخول: " + ((err && err.message) ? err.message : err) + "\n\nإذا فتحت الموقع من الكمبيوتر مباشرة، ارفعه على Netlify أو شغله عبر netlify dev.");
+    }
+  }
+
+  function openTab(tabId) {
+    document.querySelectorAll(".tab").forEach(t => t.classList.add("hidden"));
+    $(tabId).classList.remove("hidden");
+    document.querySelectorAll(".nav").forEach(n => n.classList.remove("active"));
+    const active = document.querySelector(`[data-tab="${tabId}"]`);
+    if (active) active.classList.add("active");
+    const titles = {
+      dashboard: "الرئيسية",
+      control: "Control Center",
+      videos: "الفيديوهات",
+      accounts: "الحسابات",
+      hooks: "مصنع الهوكات",
+      queue: "Autopilot Queue",
+      settings: "الربط"
+    };
+    $("pageTitle").textContent = titles[tabId] || "Marrsile";
+    if (tabId === "videos") loadEditor();
+  }
+
+  function pickVideos() {
+    $("videoInput").value = "";
+    $("videoInput").click();
+  }
+
+  function addVideos(e) {
+    addFiles(Array.from(e.target.files || []));
+  }
+
+  async function addFiles(files) {
+    const videoFiles = files.filter(f => f.type && f.type.startsWith("video/"));
+    if (!videoFiles.length) {
+      alert("لم يتم اختيار فيديوهات مدعومة. جرب MP4 أو MOV.");
+      return;
+    }
+
+    for (const file of videoFiles) {
+      try {
+        const uploaded = await uploadToCloudinary(file);
+        videos.push({
+          id: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random())),
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          url: uploaded.url,
+          publicUrl: uploaded.publicUrl,
+          cloudinaryPublicId: uploaded.cloudinaryPublicId,
+          hook: makeHook(file.name),
+          caption: makeCaption("عام الخليج"),
+          status: uploaded.localOnly ? "محلي فقط - اربط Cloudinary للنشر" : "جاهز للنشر",
+          compatibility: "pending",
+          compatibilityLabel: uploaded.localOnly ? "محلي" : "مرفوع",
+          repairStatus: "not_needed",
+          postedTo: []
+        });
+        persistAll();
+      } catch (err) {
+        console.error(err);
+        alert("فشل رفع " + file.name + ": " + (err.message || err));
+      }
+    }
+
+    selected = Math.max(0, videos.length - videoFiles.length);
+    scanNewVideos(videos.slice(selected));
+    renderAll();
+    persistAll();
+    loadEditor();
+    openTab("videos");
+    alert("تم رفع " + videoFiles.length + " فيديو");
+  }
+
+  function clean(parts) {
+    return parts.filter(Boolean).join(" ").replace(/\s+\./g, ".").replace(/\.\s*\./g, ".").replace(/\s+/g, " ").trim();
+  }
+
+  function makeHook(name = "") {
+    return rand(gulfHooks);
+  }
+
+  function makeCaption(market) {
+    const marketText = market && market !== "عام الخليج" ? `داخل ${market}` : "في الخليج";
+    const offers = {
+      discount: "خصومات قوية",
+      freeShipping: "توصيل مجاني",
+      cod: "دفع عند الاستلام",
+      bundle: "اطلب أكثر ووفر أكثر",
+      premium: "فخامة وسعر منافس"
+    };
+    const ctas = {
+      bio: "اطلب من الرابط في البايو",
+      whatsapp: "راسلنا واتساب",
+      limited: "اطلب قبل نفاد الكمية",
+      shopNow: "تسوق الآن"
+    };
+    const templates = [
+      `${rand(captionOpeners)} ${marketText}. ${offers[settings.offerType]}. ${rand(captionBenefits)} و${rand(captionBenefits)}. ${rand(captionCTAs)}.`,
+      `عطور عالمية أصلية بأسعار منافسة ${marketText}. ${offers[settings.offerType]}. ${ctas[settings.ctaMode]}.`,
+      `لو تدور على عطر فخم بسعر ذكي، هذه التشكيلة لك ${marketText}. ${rand(captionBenefits)}. ${rand(captionCTAs)}.`,
+      `ريحة فخمة وسعر أذكى ${marketText}. ${offers[settings.offerType]}. ${ctas[settings.ctaMode]}.`,
+      `${rand(captionOpeners)} — ${offers[settings.offerType]}. ${ctas[settings.ctaMode]}.`
+    ];
+    return clean([rand(templates), settings.captionFooter ? settings.captionFooter + "." : "", settings.hashtags]);
+  }
+
+  function readSettingsFromUI() {
+    ["hookType","hookPower","emojiMode","hookLength","hookStyle","offerType","ctaMode","hashtags","captionFooter","delayMode"].forEach(id => { if($(id)) settings[id] = $(id).value; });
+    ["delayMin","delayMax"].forEach(id => { if($(id)) settings[id] = Number($(id).value || 0); });
+    ["fontSize","hookTop","boxWidth","hookOpacity","hookRadius"].forEach(id => settings[id] = Number($(id).value));
+    ["autoHook","autoCaption","avoidRepeat","abTesting","smartRepost","autoRetry"].forEach(id => settings[id] = $(id).checked);
+    saveSettings();
+    updateLabels();
+  }
+
+  function loadSettingsToUI() {
+    ["hookType","hookPower","emojiMode","hookLength","hookStyle","offerType","ctaMode","hashtags","captionFooter","delayMode"].forEach(id => { if ($(id)) $(id).value = settings[id]; });
+    ["delayMin","delayMax"].forEach(id => { if ($(id)) $(id).value = settings[id]; });
+    ["fontSize","hookTop","boxWidth","hookOpacity","hookRadius"].forEach(id => { if ($(id)) $(id).value = settings[id]; });
+    ["autoHook","autoCaption","avoidRepeat","abTesting","smartRepost","autoRetry"].forEach(id => { if ($(id)) $(id).checked = settings[id]; });
+    if ($("backendUrl")) $("backendUrl").value = settings.backendUrl || "";
+    if ($("autoRepair")) $("autoRepair").checked = settings.autoRepair !== false;
+    if ($("backendUrl")) $("backendUrl").value = settings.backendUrl || "/.netlify/functions";
+    if ($("cloudinaryCloudName")) $("cloudinaryCloudName").value = settings.cloudinaryCloudName || "";
+    if ($("cloudinaryUploadPreset")) $("cloudinaryUploadPreset").value = settings.cloudinaryUploadPreset || "";
+    $("dailyCount").textContent = settings.daily;
+    renderTimes();
+    updateLabels();
+  }
+
+  function updateLabels() {
+    $("fontValue").textContent = settings.fontSize + "px";
+    $("topValue").textContent = settings.hookTop + "px";
+    $("widthValue").textContent = settings.boxWidth + "%";
+    $("opacityValue").textContent = settings.hookOpacity + "%";
+    $("radiusValue").textContent = settings.hookRadius + "px";
+  }
+
+  function applyLook() {
+    readSettingsFromUI();
+    ["heroHook","settingsHook"].forEach(id => {
+      const el = $(id);
+      if (!el) return;
+      el.className = "hook";
+      if (settings.hookStyle !== "bold") el.classList.add(settings.hookStyle);
+      el.style.fontSize = settings.fontSize + "px";
+      el.style.top = settings.hookTop + "px";
+      el.style.right = ((100 - settings.boxWidth) / 2) + "%";
+      el.style.left = ((100 - settings.boxWidth) / 2) + "%";
+      el.style.borderRadius = settings.hookRadius + "px";
+      if (settings.hookStyle === "bold") el.style.background = `rgba(0,0,0,${settings.hookOpacity/100})`;
+    });
+  }
+
+  function setPreviewHook(hook) {
+    $("heroHook").textContent = hook;
+    $("settingsHook").textContent = hook;
+    applyLook();
+  }
+
+  function applySettingsToAll() {
+    videos = videos.map(v => ({
+      ...v,
+      hook: settings.autoHook ? makeHook(v.name) : v.hook,
+      caption: settings.autoCaption ? makeCaption("عام الخليج") : v.caption
+    }));
+    renderVideos();
+    loadEditor();
+    persistAll();
+  }
+
+  function changeDaily(delta) {
+    settings.daily = Math.max(1, Math.min(12, settings.daily + delta));
+    if ($("backendUrl")) $("backendUrl").value = settings.backendUrl || "";
+    if ($("autoRepair")) $("autoRepair").checked = settings.autoRepair !== false;
+    if ($("backendUrl")) $("backendUrl").value = settings.backendUrl || "/.netlify/functions";
+    if ($("cloudinaryCloudName")) $("cloudinaryCloudName").value = settings.cloudinaryCloudName || "";
+    if ($("cloudinaryUploadPreset")) $("cloudinaryUploadPreset").value = settings.cloudinaryUploadPreset || "";
+    $("dailyCount").textContent = settings.daily;
+    saveSettings();
+  }
+
+  function addTime() {
+    settings.times.push("12:00");
+    saveSettings();
+    renderTimes();
+  }
+
+  function removeTime(index) {
+    settings.times.splice(index, 1);
+    saveSettings();
+    renderTimes();
+  }
+
+  function renderTimes() {
+    $("timeList").innerHTML = settings.times.map((t, i) => `
+      <div class="time-row">
+        <input type="time" value="${escapeHtml(t)}" data-time-index="${i}">
+        <button data-remove-time="${i}">حذف</button>
+      </div>
+    `).join("");
+
+    document.querySelectorAll("[data-time-index]").forEach(input => {
+      input.addEventListener("change", () => {
+        settings.times[Number(input.dataset.timeIndex)] = input.value;
+        saveSettings();
+      });
+    });
+
+    document.querySelectorAll("[data-remove-time]").forEach(btn => {
+      btn.addEventListener("click", () => removeTime(Number(btn.dataset.removeTime)));
+    });
+  }
+
+  function renderVideos() {
+    $("videoList").innerHTML = videos.length ? videos.map((v, i) => `
+      <div class="video-item ${i === selected ? "active" : ""}" data-video-index="${i}">
+        <b>${escapeHtml(v.name)}</b>
+        <p>${escapeHtml(v.hook)}</p>
+        <span class="muted">${v.status}</span>
+        <div class="video-controls">
+          <button class="publish-now-btn" data-publish-video="${i}" type="button">نشر الآن</button>
+          <button class="schedule-now-btn" data-schedule-video="${i}" type="button">جدولة</button>
+          <button class="delete-video-btn" data-delete-video="${i}" type="button">حذف الفيديو</button>
+        </div>
+        <span class="compat ${v.compatibility === "compatible" ? "ok" : v.compatibility === "needs_repair" ? "warn" : v.compatibility === "fixed" ? "ok" : "bad"}">${escapeHtml(v.compatibilityLabel || "قيد الفحص")}</span>${v.repairReason ? `<small class="muted">${escapeHtml(v.repairReason)}</small>` : ""}
+      </div>
+    `).join("") : `<div class="video-item">ارفع الفيديوهات فقط، والباقي تلقائي.</div>`;
+
+    document.querySelectorAll("[data-video-index]").forEach(item => {
+      item.addEventListener("click", (e) => {
+        if (e.target.closest("button")) return;
+        selected = Number(item.dataset.videoIndex);
+        renderVideos();
+        loadEditor();
+      });
+    });
+
+    document.querySelectorAll("[data-delete-video]").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        deleteVideo(Number(btn.dataset.deleteVideo));
+      });
+    });
+
+    document.querySelectorAll("[data-publish-video]").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        publishVideoNow(Number(btn.dataset.publishVideo));
+      });
+    });
+
+    document.querySelectorAll("[data-schedule-video]").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        scheduleVideoNow(Number(btn.dataset.scheduleVideo));
+      });
+    });
+  }
+
+
+  function deleteVideo(index) {
+    const v = videos[index];
+    if (!v) return;
+
+    const ok = confirm("هل تريد حذف هذا الفيديو من القائمة؟");
+    if (!ok) return;
+
+    try {
+      if (v.url && v.url.startsWith("blob:")) URL.revokeObjectURL(v.url);
+    } catch (_) {}
+
+    videos.splice(index, 1);
+    queue = queue.filter(q => q.video !== v.name);
+
+    if (selected >= videos.length) selected = Math.max(0, videos.length - 1);
+
+    renderAll();
+persistAll();
+
+    if (!videos.length) {
+      const editor = $("editorVideo");
+      if (editor) {
+        editor.pause();
+        editor.removeAttribute("src");
+        editor.style.display = "none";
+        editor.load();
+      }
+      if ($("videoHook")) $("videoHook").value = "";
+      if ($("videoCaption")) $("videoCaption").value = "";
+    } else {
+      loadEditor();
+    }
+  }
+
+
+  function loadEditor() {
+    const v = videos[selected];
+    if (!v) return;
+    $("editorVideo").src = v.url;
+    $("editorVideo").style.display = "block";
+    $("videoHook").value = v.hook;
+    $("videoCaption").value = v.caption;
+
+    ["heroVideo","settingsVideo"].forEach(id => {
+      const vid = $(id);
+      vid.src = v.url;
+      vid.style.display = "block";
+      vid.play().catch(() => {});
+    });
+
+    setPreviewHook(v.hook);
+  }
+
+  function manualVideoEdit() {
+    const v = videos[selected];
+    if (!v) return;
+    v.hook = $("videoHook").value;
+    v.caption = $("videoCaption").value;
+    renderVideos();
+    setPreviewHook(v.hook);
+    persistAll();
+  }
+
+  function regenSelected() {
+    const v = videos[selected];
+    if (!v) return;
+    v.hook = makeHook(v.name);
+    v.caption = makeCaption("عام الخليج");
+    renderVideos();
+    loadEditor();
+    persistAll();
+  }
+
+
+  function functionsBase() {
+    const input = $("backendUrl");
+    const value = input && input.value ? input.value.trim() : "";
+    return value || "/.netlify/functions";
+  }
+
+  function connectInstagramOfficial() {
+    window.location.href = functionsBase().replace(/\/$/, "") + "/auth-instagram";
+  }
+
+  async function loadOfficialAccounts() {
+    try {
+      const res = await fetch(functionsBase().replace(/\/$/, "") + "/accounts");
+      if (!res.ok) throw new Error("فشل جلب الحسابات الرسمية");
+      const data = await res.json();
+      const official = (data.accounts || []).map(a => ({
+        id: a.id || a.instagramId || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()+Math.random())),
+        name: a.pageName || a.name || "Instagram Account",
+        user: a.username ? "@" + a.username.replace(/^@/, "") : (a.user || "@instagram"),
+        market: a.market || "رسمي",
+        link: a.link || "",
+        official: true
+      }));
+
+      // دمج بدون تكرار
+      official.forEach(acc => {
+        const exists = accounts.some(x => x.id === acc.id || x.user === acc.user);
+        if (!exists) accounts.push(acc);
+      });
+
+      renderAll();
+persistAll();
+      alert("تم تحديث الحسابات الرسمية: " + official.length);
+    } catch (err) {
+      console.error(err);
+      alert("لم يتم جلب الحسابات الرسمية. تأكد أنك ضبطت Environment Variables في Netlify وربطت Meta.");
+    }
+  }
+
+
+  function addAccount() {
+    const name = $("accName").value.trim();
+    const user = $("accUser").value.trim();
+    if (!name || !user) {
+      alert("أدخل اسم الحساب واليوزر");
+      return;
+    }
+    accounts.push({
+      id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()),
+      name,
+      user,
+      market: $("accMarket").value,
+      link: $("accLink").value.trim() || "https://marrsile.com"
+    });
+    $("accName").value = "";
+    $("accUser").value = "";
+    $("accLink").value = "";
+    renderAll();
+persistAll();
+  }
+
+
+  function editAccount(index) {
+    const account = accounts[index];
+    if (!account) return;
+
+    const newName = prompt("عدّل اسم الحساب:", account.name);
+    if (newName === null) return;
+
+    const newUser = prompt("عدّل اليوزر:", account.user);
+    if (newUser === null) return;
+
+    const newMarket = prompt("عدّل الدولة/السوق:", account.market);
+    if (newMarket === null) return;
+
+    const newLink = prompt("عدّل رابط المتجر:", account.link);
+    if (newLink === null) return;
+
+    accounts[index] = {
+      ...account,
+      name: newName.trim() || account.name,
+      user: newUser.trim() || account.user,
+      market: newMarket.trim() || account.market,
+      link: newLink.trim() || account.link
+    };
+
+    renderAll();
+persistAll();
+  }
+
+  function deleteAccount(index) {
+    const account = accounts[index];
+    if (!account) return;
+
+    const ok = confirm("هل تريد حذف هذا الحساب؟");
+    if (!ok) return;
+
+    accounts.splice(index, 1);
+
+    // حذف أي عناصر Queue مرتبطة بهذا الحساب حتى لا ينشر عليها بالخطأ
+    queue = queue.filter(q => q.account !== account.name);
+
+    renderAll();
+persistAll();
+  }
+
+
+  function renderAccounts() {
+    $("accountsList").innerHTML = accounts.length ? accounts.map((a, index) => `
+      <div class="account-item">
+        <b>${escapeHtml(a.name)}</b>
+        <span>${escapeHtml(a.user)} · ${escapeHtml(a.market)}</span>
+        <p>${escapeHtml(a.link)}</p>
+        <span class="ok">${a.official ? "Officially Connected" : "جاهز"}</span>
+        <div class="account-actions">
+          <button class="edit-account-btn" data-edit-account="${index}" type="button">تعديل</button>
+          <button class="delete-account-btn" data-delete-account="${index}" type="button">حذف</button>
+        </div>
+      </div>
+    `).join("") : `<div class="account-item">أضف الحسابات مرة واحدة فقط.</div>`;
+
+    document.querySelectorAll("[data-edit-account]").forEach(btn => {
+      btn.addEventListener("click", () => editAccount(Number(btn.dataset.editAccount)));
+    });
+
+    document.querySelectorAll("[data-delete-account]").forEach(btn => {
+      btn.addEventListener("click", () => deleteAccount(Number(btn.dataset.deleteAccount)));
+    });
+  }
+
+  function startAutopilot() {
+    readSettingsFromUI();
+    applySettingsToAll();
+
+    if (!videos.length) {
+      alert("ارفع فيديوهات أولاً");
+      return;
+    }
+    if (!accounts.length) {
+      alert("أضف حساباً واحداً على الأقل");
+      openTab("accounts");
+      return;
+    }
+
+    const activeAccounts = accounts.filter(a => a.official);
+    if (!activeAccounts.length) {
+      alert("النشر التلقائي يحتاج حساباً واحداً على الأقل مربوطاً رسمياً من Meta. الحسابات اليدوية تبقى للعرض فقط.");
+      openTab("accounts");
+      return;
+    }
+
+    autopilot = true;
+    queue = buildDailyQueue(activeAccounts);
+    startSchedulerLoop();
+
+    renderAll();
+    persistAll();
+    openTab("queue");
+    alert(`تم بناء الجدول: ${settings.daily} فيديو يومياً لكل حساب. لن ينشر 500 فيديو بنفس اليوم.`);
+  }
+
+  function buildDailyQueue(activeAccounts) {
+    const daily = Math.max(1, Number(settings.daily || 3));
+    const times = Array.isArray(settings.times) && settings.times.length ? settings.times : ["08:00", "16:00", "20:00"];
+    const today = new Date();
+    today.setSeconds(0, 0);
+
+    const items = [];
+    activeAccounts.forEach((a, accountIndex) => {
+      videos.forEach((v, videoIndex) => {
+        const dayOffset = Math.floor(videoIndex / daily);
+        const slotIndex = videoIndex % daily;
+        const baseTime = times[slotIndex % times.length] || "08:00";
+        const [hh, mm] = String(baseTime).split(":").map(Number);
+        const scheduled = new Date(today);
+        scheduled.setDate(today.getDate() + dayOffset);
+        scheduled.setHours(hh || 0, mm || 0, 0, 0);
+        scheduled.setMinutes(scheduled.getMinutes() + randomDelayMinutes(accountIndex));
+
+        // إذا وقت اليوم مرّ، ابدأ من الغد حتى لا ينشر دفعة مباشرة بعد تشغيل Autopilot.
+        if (dayOffset === 0 && scheduled <= new Date()) {
+          scheduled.setDate(scheduled.getDate() + 1);
+        }
+
+        items.push({
+          id: `${a.id || a.name}-${v.id || v.name}-${scheduled.getTime()}`,
+          videoId: v.id,
+          video: v.name,
+          accountId: a.id,
+          account: a.name,
+          market: a.market || "رسمي",
+          time: scheduled.toLocaleString("ar", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }),
+          scheduledAt: scheduled.toISOString(),
+          status: "pending",
+          hook: v.hook,
+          caption: makeCaption(a.market)
+        });
+      });
+    });
+
+    return items.sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
+  }
+
+  let schedulerTimer = null;
+  function startSchedulerLoop() {
+    if (schedulerTimer) clearInterval(schedulerTimer);
+    schedulerTimer = setInterval(runDueQueue, 60 * 1000);
+    runDueQueue();
+  }
+
+  async function runDueQueue() {
+    if (!autopilot || !queue.length) return;
+    const now = new Date();
+    const dueIndex = queue.findIndex(q => q.status === "pending" && q.scheduledAt && new Date(q.scheduledAt) <= now);
+    if (dueIndex === -1) return;
+    await publishQueueItem(dueIndex, true);
+  }
+
+  async function publishNowFromQueue(index) {
+    const item = queue[index];
+    if (!item) return;
+    const ok = confirm("هل تريد نشر هذا الفيديو الآن على الحساب المحدد؟");
+    if (!ok) return;
+    await publishQueueItem(index, false);
+  }
+
+  async function publishQueueItem(index, automatic = false) {
+    const item = queue[index];
+    if (!item || item.status === "publishing" || item.status === "published") return;
+
+    const btns = document.querySelectorAll(`[data-publish-now="${index}"]`);
+    btns.forEach(b => {
+      b.disabled = true;
+      b.textContent = "جاري النشر...";
+    });
+
+    item.status = "publishing";
+    item.lastAttemptAt = new Date().toISOString();
+    renderQueue();
+    persistAll();
+
+    try {
+      const account = accounts.find(a => a.id === item.accountId || a.name === item.account || a.user === item.account);
+      const video = videos.find(v => v.id === item.videoId || v.name === item.video);
+
+      if (!account || !account.official) {
+        throw new Error("هذا العنصر غير مربوط بحساب Officially Connected.");
+      }
+
+      const videoUrl = video && (video.publicUrl || video.url);
+      if (!videoUrl) {
+        throw new Error("لم يتم العثور على رابط الفيديو. أعد رفع الفيديو.");
+      }
+      if (String(videoUrl).startsWith("blob:")) {
+        throw new Error("النشر يحتاج رابط فيديو عام من Cloudinary/S3. الفيديو الحالي محلي داخل المتصفح فقط.");
+      }
+
+      const res = await fetch((settings.backendUrl || "/.netlify/functions").replace(/\/$/, "") + "/publish-reel", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          accountId: account.id,
+          videoUrl,
+          caption: item.caption || video.caption || item.hook || ""
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "فشل النشر");
+
+      item.status = "published";
+      item.publishedAt = new Date().toISOString();
+      if (video) video.postedTo = [...(video.postedTo || []), account.user || account.name];
+      renderAll();
+      persistAll();
+      if (!automatic) alert("تم إرسال النشر إلى Instagram بنجاح.");
+    } catch (err) {
+      console.error(err);
+      item.status = "failed";
+      item.error = err.message || String(err);
+      renderAll();
+      persistAll();
+      if (!automatic) alert("فشل النشر الآن: " + (err.message || err));
+    } finally {
+      btns.forEach(b => {
+        b.disabled = false;
+        b.textContent = "نشر الآن";
+      });
+    }
+  }
+
+  function renderQueue() {
+    $("queueList").innerHTML = queue.length ? queue.map((q, i) => `
+      <div class="queue-item">
+        <b>${escapeHtml(q.video || q.title || "فيديو")}</b>
+        <span class="muted">${escapeHtml(q.account || "")} · ${escapeHtml(q.market || "")} · ${escapeHtml(q.time || "")}</span>
+        <p>${escapeHtml(q.hook || "")}</p>
+        <span class="${q.status === "published" ? "ok" : q.status === "failed" ? "bad" : "warn"}">${escapeHtml(q.status || "pending")}</span>
+        ${q.error ? `<small class="muted">${escapeHtml(q.error)}</small>` : ""}
+        <div class="queue-controls">
+          <button class="publish-now-btn" data-publish-now="${i}" type="button" ${q.status === "published" || q.status === "publishing" ? "disabled" : ""}>${q.status === "publishing" ? "جاري النشر..." : "نشر الآن"}</button>
+        </div>
+      </div>
+    `).join("") : `<div class="queue-item">شغّل Autopilot ليبني جدول 3 فيديوهات يومياً لكل حساب.</div>`;
+  }
+
+  function renderHookFactory() {
+    $("hookFactory").innerHTML = gulfHooks.map(h => `<div class="hook-item">${escapeHtml(h)}</div>`).join("");
+  }
+
+
+  function formatTime(seconds) {
+    if (!isFinite(seconds) || seconds < 0) seconds = 0;
+    const m = Math.floor(seconds / 60).toString().padStart(2, "0");
+    const s = Math.floor(seconds % 60).toString().padStart(2, "0");
+    return `${m}:${s}`;
+  }
+
+  function getPreviewVideo() {
+    return $("settingsVideo");
+  }
+
+  function togglePreviewPlayback() {
+    const v = getPreviewVideo();
+    if (!v || !v.src) return;
+    if (v.paused) {
+      v.play().catch(() => {});
+      $("previewPlayBtn").textContent = "إيقاف";
+    } else {
+      v.pause();
+      $("previewPlayBtn").textContent = "تشغيل";
+    }
+  }
+
+  function seekPreview(delta) {
+    const v = getPreviewVideo();
+    if (!v || !isFinite(v.duration)) return;
+    v.currentTime = Math.max(0, Math.min(v.duration, v.currentTime + delta));
+    updatePreviewTime();
+  }
+
+  function togglePreviewMute() {
+    const v = getPreviewVideo();
+    if (!v) return;
+    v.muted = !v.muted;
+    $("previewMuteBtn").textContent = v.muted ? "تشغيل الصوت" : "كتم الصوت";
+  }
+
+  function seekPreviewBar() {
+    const v = getPreviewVideo();
+    if (!v || !isFinite(v.duration)) return;
+    const percent = Number($("previewSeek").value || 0);
+    v.currentTime = (percent / 100) * v.duration;
+    updatePreviewTime();
+  }
+
+  function updatePreviewTime() {
+    const v = getPreviewVideo();
+    if (!v) return;
+    const duration = isFinite(v.duration) ? v.duration : 0;
+    $("previewCurrent").textContent = formatTime(v.currentTime || 0);
+    $("previewDuration").textContent = formatTime(duration);
+    $("previewSeek").value = duration ? Math.round((v.currentTime / duration) * 100) : 0;
+    $("previewPlayBtn").textContent = v.paused ? "تشغيل" : "إيقاف";
+    $("previewMuteBtn").textContent = v.muted ? "تشغيل الصوت" : "كتم الصوت";
+  }
+
+  function parseDelayRange() {
+    const mode = settings.delayMode || "off";
+    if (mode === "off") return [0, 0];
+    if (mode === "custom") return [Number(settings.delayMin || 0), Number(settings.delayMax || 0)];
+    const parts = mode.split("-").map(Number);
+    return [parts[0] || 0, parts[1] || parts[0] || 0];
+  }
+
+  function randomDelayMinutes(accountIndex) {
+    const [min, max] = parseDelayRange();
+    if (!max) return 0;
+    const random = Math.floor(min + Math.random() * (max - min + 1));
+    return accountIndex * random;
+  }
+
+  function addMinutesToTime(time, minutes) {
+    const [h, m] = String(time || "08:00").split(":").map(Number);
+    const total = ((h || 0) * 60 + (m || 0) + minutes) % (24 * 60);
+    const hh = Math.floor(total / 60).toString().padStart(2, "0");
+    const mm = (total % 60).toString().padStart(2, "0");
+    return `${hh}:${mm}`;
+  }
+
+
+
+
+  async function testVideoPlayback(v) {
+    return new Promise((resolve) => {
+      const test = document.createElement("video");
+      let finished = false;
+      let hasFrame = false;
+
+      test.muted = true;
+      test.preload = "auto";
+      test.playsInline = true;
+      test.src = v.url;
+
+      const done = (result) => {
+        if (finished) return;
+        finished = true;
+        try {
+          test.pause();
+          test.removeAttribute("src");
+          test.load();
+        } catch (_) {}
+        resolve(result);
+      };
+
+      const timer = setTimeout(() => {
+        done({ ok: false, reason: "انتهت مهلة اختبار عرض الفيديو" });
+      }, 3500);
+
+      test.addEventListener("loadeddata", () => {
+        hasFrame = test.videoWidth > 0 && test.videoHeight > 0;
+        if (!hasFrame) {
+          clearTimeout(timer);
+          done({ ok: false, reason: "الصوت يعمل لكن الصورة غير مدعومة" });
+        }
+      });
+
+      test.addEventListener("error", () => {
+        clearTimeout(timer);
+        done({ ok: false, reason: "المتصفح لا يستطيع تشغيل ترميز الفيديو" });
+      });
+
+      test.addEventListener("canplay", () => {
+        hasFrame = test.videoWidth > 0 && test.videoHeight > 0;
+        clearTimeout(timer);
+        done({ ok: hasFrame, reason: hasFrame ? "متوافق" : "الصوت فقط بدون صورة" });
+      });
+
+      test.play().then(() => {
+        setTimeout(() => {
+          hasFrame = test.videoWidth > 0 && test.videoHeight > 0;
+          clearTimeout(timer);
+          done({ ok: hasFrame, reason: hasFrame ? "متوافق" : "الصوت فقط بدون صورة" });
+        }, 900);
+      }).catch(() => {
+        // Some browsers block autoplay; loadeddata/canplay still decide.
+      });
+    });
+  }
+
+  async function scanNewVideos(list) {
+    for (const v of list) {
+      v.compatibility = "checking";
+      v.compatibilityLabel = "⏳ فحص التشغيل";
+      renderVideos();
+
+      const result = await testVideoPlayback(v);
+      if (result.ok) {
+        v.compatibility = "compatible";
+        v.compatibilityLabel = "✅ Compatible";
+        v.repairStatus = "not_needed";
+      } else {
+        v.compatibility = "needs_repair";
+        v.compatibilityLabel = "🔧 يحتاج إصلاح";
+        v.repairStatus = "waiting";
+        v.repairReason = result.reason;
+      }
+      renderVideos();
+    }
+  }
+
+  async function scanAllVideos() {
+    if (!videos.length) {
+      alert("لا توجد فيديوهات لفحصها");
+      return;
+    }
+    await scanNewVideos(videos);
+    alert("تم فحص الفيديوهات. إذا كان الصوت يعمل بدون صورة سيتم تصنيف الفيديو كـ يحتاج إصلاح.");
+  }
+
+
+
+
+
+  let ffmpegInstance = null;
+  let ffmpegLoadingPromise = null;
+
+  async function getInternalFFmpeg() {
+    const FFmpegNamespace = window.FFmpegWASM || window.FFmpeg;
+    const UtilNamespace = window.FFmpegUtil;
+
+    if (!FFmpegNamespace || !FFmpegNamespace.FFmpeg) {
+      throw new Error("لم يتم تحميل مكتبة FFmpeg. تأكد من اتصال الإنترنت ثم حدّث الصفحة.");
+    }
+
+    if (!UtilNamespace || !UtilNamespace.fetchFile) {
+      throw new Error("لم يتم تحميل مكتبة FFmpeg Util. تأكد من اتصال الإنترنت ثم حدّث الصفحة.");
+    }
+
+    if (!ffmpegInstance) {
+      ffmpegInstance = new FFmpegNamespace.FFmpeg();
+      ffmpegInstance.on("log", ({ message }) => console.log("[ffmpeg]", message));
+      ffmpegInstance.on("progress", ({ progress }) => {
+        const percent = Math.round((progress || 0) * 100);
+        console.log("[ffmpeg progress]", percent + "%");
+      });
+    }
+
+    if (!ffmpegInstance.loaded) {
+      if (!ffmpegLoadingPromise) {
+        ffmpegLoadingPromise = ffmpegInstance.load({
+          coreURL: "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js",
+          wasmURL: "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm",
+          workerURL: "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.worker.js"
+        });
+      }
+      await ffmpegLoadingPromise;
+    }
+
+    // Some builds don't expose .loaded consistently, so verify by attempting a harmless command.
+    if (!ffmpegInstance.loaded) {
+      ffmpegInstance.loaded = true;
+    }
+
+    return {
+      ffmpeg: ffmpegInstance,
+      fetchFile: UtilNamespace.fetchFile
+    };
+  }
+
+  async function repairVideoInternally(v) {
+    const { ffmpeg, fetchFile } = await getInternalFFmpeg();
+
+    const inputName = "input-" + Date.now() + ".mp4";
+    const outputName = "fixed-" + Date.now() + ".mp4";
+
+    const blob = await fetch(v.url).then(r => r.blob());
+    await ffmpeg.writeFile(inputName, await fetchFile(blob));
+
+    await ffmpeg.exec([
+      "-i", inputName,
+      "-map", "0:v:0",
+      "-map", "0:a?",
+      "-c:v", "libx264",
+      "-preset", "veryfast",
+      "-crf", "16",
+      "-pix_fmt", "yuv420p",
+      "-profile:v", "high",
+      "-c:a", "aac",
+      "-b:a", "320k",
+      "-movflags", "+faststart",
+      outputName
+    ]);
+
+    const data = await ffmpeg.readFile(outputName);
+    const fixedBlob = new Blob([data.buffer], { type: "video/mp4" });
+    const fixedUrl = URL.createObjectURL(fixedBlob);
+
+    try { await ffmpeg.deleteFile(inputName); } catch (_) {}
+    try { await ffmpeg.deleteFile(outputName); } catch (_) {}
+
+    v.url = fixedUrl;
+    v.name = v.name.replace(/\.[^.]+$/, "") + "-fixed.mp4";
+    v.type = "video/mp4";
+    v.compatibility = "fixed";
+    v.compatibilityLabel = "✅ Fixed Internally";
+    v.repairStatus = "fixed";
+    v.repairReason = "";
+  }
+
+
+  async function forceRepairAllVideos() {
+    if (!videos.length) {
+      alert("لا توجد فيديوهات لإصلاحها");
+      return;
+    }
+
+    videos.forEach(v => {
+      v.compatibility = "needs_repair";
+      v.compatibilityLabel = "🔧 سيتم إصلاحه داخلياً";
+      v.repairStatus = "waiting";
+    });
+    renderVideos();
+    await repairIncompatibleVideos();
+  }
+
+  async function repairIncompatibleVideos() {
+    const targets = videos.filter(v => v.compatibility === "needs_repair" || v.repairStatus === "waiting");
+    if (!targets.length) {
+      alert("لا توجد فيديوهات تحتاج إصلاح حالياً");
+      return;
+    }
+
+    alert("سيبدأ الإصلاح الداخلي. قد يأخذ وقتاً حسب حجم الفيديو وقوة الجهاز. لا تغلق الصفحة.");
+
+    for (const v of targets) {
+      v.compatibilityLabel = "⏳ تحميل FFmpeg ثم إصلاح...";
+      v.repairStatus = "processing";
+      renderVideos();
+
+      try {
+        await repairVideoInternally(v);
+      } catch (err) {
+        console.error(err);
+        v.compatibility = "needs_repair";
+        v.compatibilityLabel = "❌ فشل الإصلاح الداخلي";
+        v.repairStatus = "failed";
+        v.repairReason = (err && err.message) ? err.message : "فشل غير معروف";
+      }
+
+      renderVideos();
+      loadEditor();
+    }
+
+    alert("انتهى إصلاح الفيديوهات داخلياً.");
+  }
+
+
+  function renderStats() {
+    $("statVideos").textContent = videos.length;
+    $("statAccounts").textContent = accounts.length;
+    $("statQueue").textContent = queue.length;
+    $("autoState").textContent = autopilot ? "ON" : "OFF";
+  }
+
+  function renderAll() {
+    renderStats();
+    renderVideos();
+    renderAccounts();
+    renderQueue();
+    renderHookFactory();
+    applyLook();
+  }
+
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, s => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#039;"
+    }[s]));
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    bind();
+    setupPublishNowDelegation();
+    hydrateAll();
+    loadSettingsToUI();
+    if (queue.some(q => q.status === "pending")) { autopilot = true; startSchedulerLoop(); }
+    renderAll();
+    if (new URLSearchParams(window.location.search).get("connected")) {
+      loadOfficialAccounts();
+      history.replaceState({}, "", window.location.pathname);
+    }
+  });
+})();
