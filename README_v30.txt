@@ -1,0 +1,1 @@
+v30: Auto hook generation + browser rendering overlay before Cloudinary upload. No Meta/OAuth/publish function changes.

@@ -299,3 +299,92 @@
 }
 .v28-delete-queue{ background:linear-gradient(135deg,#dc2626,#fb7185); }
 .v28-clear-queue{ background:linear-gradient(135deg,#7f1d1d,#ef4444); margin-bottom:14px; }
+
+/* v29 final queue buttons */
+.v29-delete-queue,
+.v29-clear-queue{
+  border:none;
+  border-radius:14px;
+  padding:11px 18px;
+  font-weight:900;
+  color:#fff;
+  cursor:pointer;
+  margin-top:12px;
+  transition:.2s ease;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+}
+.v29-delete-queue{
+  background:linear-gradient(135deg,#dc2626,#fb7185);
+  box-shadow:0 10px 28px rgba(220,38,38,.22);
+}
+.v29-clear-queue{
+  background:linear-gradient(135deg,#7f1d1d,#ef4444);
+  box-shadow:0 10px 28px rgba(239,68,68,.24);
+  margin-bottom:16px;
+}
+.v29-delete-queue:hover,
+.v29-clear-queue:hover{
+  transform:translateY(-1px) scale(1.02);
+}
+
+/* v30 Hook rendering controls */
+.v30-hook-settings{
+  position:fixed;
+  left:28px;
+  bottom:28px;
+  z-index:9999;
+  border:none;
+  border-radius:18px;
+  padding:13px 18px;
+  font-weight:900;
+  color:#fff;
+  background:linear-gradient(135deg,#7c3aed,#0ea5e9);
+  box-shadow:0 18px 45px rgba(14,165,233,.25);
+  cursor:pointer;
+}
+
+/* v31 Smart Scheduler */
+.v31-scheduler-box{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+  padding:16px;
+  margin-bottom:16px;
+  border-radius:18px;
+  background:rgba(255,255,255,.06);
+  border:1px solid rgba(255,255,255,.12);
+}
+.v31-scheduler-info{
+  font-weight:800;
+  color:#dbeafe;
+  flex:1;
+  min-width:260px;
+}
+.v31-smart-schedule,
+.v31-schedule-settings{
+  border:none;
+  border-radius:14px;
+  padding:11px 18px;
+  font-weight:900;
+  color:#fff;
+  cursor:pointer;
+}
+.v31-smart-schedule{
+  background:linear-gradient(135deg,#16a34a,#22c55e);
+}
+.v31-schedule-settings{
+  background:linear-gradient(135deg,#7c3aed,#0ea5e9);
+}
+.v31-scheduled-at{
+  margin-top:10px;
+  display:inline-flex;
+  padding:8px 12px;
+  border-radius:999px;
+  color:#bfdbfe;
+  background:rgba(59,130,246,.14);
+  border:1px solid rgba(147,197,253,.25);
+  font-weight:800;
+}
