@@ -1,0 +1,1 @@
+v37: Fix queue card growing blank space and duplicated injected controls. No changes to Meta, Cloudinary, publish, hook rendering.

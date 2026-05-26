@@ -2568,3 +2568,61 @@ function v36ShowHookedBadges(){
 }
 setInterval(v36ShowHookedBadges,1200);
 /* ===== End v36 Cloudinary Hooked Video Generator ===== */
+
+
+/* ===== v37 Queue Spacing + Duplicate Injection Fix ===== */
+function v37FixQueueSpacing(){
+  try{
+    const queueRoot = document.querySelector("#queue") || document.querySelector("[data-section='queue']") || null;
+    const scope = queueRoot || document;
+
+    // remove duplicated scheduler toolbars
+    const toolbars = Array.from(document.querySelectorAll(".v32-scheduler-toolbar"));
+    if(toolbars.length > 1){
+      toolbars.slice(1).forEach(el=>el.remove());
+    }
+
+    // remove duplicate delete buttons/time badges in each queue card
+    const possibleCards = Array.from(scope.querySelectorAll("div")).filter(el=>{
+      const txt = el.textContent || "";
+      return (
+        (txt.includes("مجدول تلقائياً") || txt.includes("published") || txt.includes("جاهز للنشر")) &&
+        (txt.includes("mp4") || txt.includes("رسمي") || txt.includes("Oman") || txt.includes("Louis") || txt.includes("Marrsile"))
+      );
+    });
+
+    possibleCards.forEach(card=>{
+      card.classList.add("v37-compact-queue-card");
+
+      const deleteButtons = Array.from(card.querySelectorAll(".v32-delete-one,.v29-delete-queue,.v28-delete-queue,.delete-queue-item-btn"));
+      if(deleteButtons.length > 1){
+        deleteButtons.slice(1).forEach(b=>b.remove());
+      }
+
+      const badges = Array.from(card.querySelectorAll(".v32-time-badge,.v31-scheduled-at"));
+      if(badges.length > 1){
+        badges.slice(1).forEach(b=>b.remove());
+      }
+
+      // remove empty giant child blocks
+      Array.from(card.children).forEach(child=>{
+        const txt=(child.textContent||"").trim();
+        const r=child.getBoundingClientRect();
+        if(!txt && r.height > 120){
+          child.remove();
+        }
+      });
+    });
+
+    // normalize queue list
+    const queueList = document.querySelector("#queueList") || document.querySelector(".queue-list");
+    if(queueList){
+      queueList.classList.add("v37-compact-queue-list");
+    }
+
+  }catch(err){
+    console.error("v37 queue spacing error", err);
+  }
+}
+setInterval(v37FixQueueSpacing, 1000);
+/* ===== End v37 Queue Spacing Fix ===== */

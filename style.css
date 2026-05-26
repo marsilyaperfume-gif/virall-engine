@@ -660,3 +660,78 @@ button,
   font-weight:900;
   font-size:13px;
 }
+
+
+/* ===== v37 Queue Spacing Fix ===== */
+#queueList,
+.queue-list,
+.v37-compact-queue-list{
+  display:grid !important;
+  grid-template-columns:1fr !important;
+  gap:14px !important;
+  align-items:start !important;
+}
+
+#queueList > *,
+.queue-list > *,
+.v37-compact-queue-card{
+  min-height:auto !important;
+  height:auto !important;
+  max-height:none !important;
+  padding:18px !important;
+  display:block !important;
+  overflow:hidden !important;
+}
+
+.v37-compact-queue-card *{
+  max-height:none;
+}
+
+.v37-compact-queue-card{
+  position:relative !important;
+}
+
+.v37-compact-queue-card .v32-delete-one,
+.v37-compact-queue-card .v29-delete-queue,
+.v37-compact-queue-card .v28-delete-queue,
+.v37-compact-queue-card .delete-queue-item-btn{
+  margin-top:12px !important;
+  margin-bottom:0 !important;
+}
+
+.v37-compact-queue-card .v32-time-badge,
+.v37-compact-queue-card .v31-scheduled-at{
+  margin-top:10px !important;
+  margin-bottom:0 !important;
+}
+
+/* prevent old card CSS from reserving huge vertical space */
+#queue .card,
+#queue [class*="card"],
+#queue .queue-item,
+#queueList .queue-item{
+  min-height:auto !important;
+  height:auto !important;
+  padding-top:18px !important;
+  padding-bottom:18px !important;
+}
+
+/* reduce empty paragraphs/margins inside queue */
+#queue p,
+#queue h1,
+#queue h2,
+#queue h3{
+  margin-top:8px !important;
+  margin-bottom:8px !important;
+}
+
+/* keep queue page compact */
+#queue{
+  align-content:start !important;
+}
+
+#queue .toolbar{
+  margin-bottom:14px !important;
+}
+
+/* ===== End v37 Queue Spacing Fix ===== */
