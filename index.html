@@ -333,9 +333,12 @@
         </div>
         <div class="card">
           <h3>Storage</h3>
-          <p>للنشر الحقيقي نحتاج Cloudinary/S3 لتحويل الفيديو إلى رابط عام.</p>
-          <input id="cloudinaryCloudName" placeholder="Cloudinary Cloud Name"/>
-          <input id="cloudinaryUploadPreset" placeholder="Upload Preset"/>
+          <p>للنشر الحقيقي نحتاج رابط HTTPS عام. الخيار الافتراضي هنا Supabase Storage، ويمكن ترك Cloudinary كخيار احتياطي.</p>
+          <input id="supabaseUrl" placeholder="Supabase Project URL مثل https://xxxx.supabase.co"/>
+          <input id="supabaseAnonKey" placeholder="Supabase anon public key"/>
+          <input id="supabaseBucket" placeholder="Bucket name" value="reels"/>
+          <input id="cloudinaryCloudName" placeholder="Cloudinary Cloud Name - اختياري"/>
+          <input id="cloudinaryUploadPreset" placeholder="Upload Preset - اختياري"/>
           <button class="secondary full" id="saveStorageBtn">حفظ</button>
         </div>
       </div>

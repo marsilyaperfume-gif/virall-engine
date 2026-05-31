@@ -1,4 +1,133 @@
 
+/* ===== v32 Auto Scheduler + Duplicate Publish Fix ===== */
+
+window.__publishLocks = window.__publishLocks || {};
+
+function acquirePublishLock(key){
+  if(window.__publishLocks[key]) return false;
+  window.__publishLocks[key] = true;
+  return true;
+}
+
+function releasePublishLock(key){
+  delete window.__publishLocks[key];
+}
+
+let __serverQueueSyncTimer = null;
+
+function toServerScheduledAt(timeStr){
+  const now = new Date();
+  const parts = String(timeStr || "").match(/(\d{1,2})[:٫](\d{1,2})/);
+  if(!parts) return "";
+  const d = new Date(now);
+  d.setHours(Number(parts[1]), Number(parts[2]), 0, 0);
+  if(d.getTime() <= now.getTime() - 60 * 1000){
+    d.setDate(d.getDate() + 1);
+  }
+  return d.toISOString();
+}
+
+function publicVideoUrl(video){
+  return (video && (video.publicUrl || video.cloudinaryUrl || video.url)) || "";
+}
+
+async function syncQueueToServerNow(){
+  try{
+    if(typeof queue === "undefined" || !Array.isArray(queue)) return;
+    const payloadQueue = queue.map((item, index) => ({
+      ...item,
+      id: item.id || `${item.accountId || item.account || "acc"}_${item.videoId || item.video || "video"}_${item.time || index}`,
+      scheduledAt: item.scheduledAt || toServerScheduledAt(item.time || item.scheduledTime),
+      status: item.status === "published" ? "published" : (item.status === "failed" ? "failed" : "scheduled")
+    }));
+
+    const base = ((typeof settings !== "undefined" && settings.backendUrl) || "/.netlify/functions").replace(/\/$/, "");
+    await fetch(base + "/queue", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ queue: payloadQueue })
+    });
+  }catch(err){
+    console.warn("Server queue sync failed", err);
+  }
+}
+
+function syncQueueToServerDebounced(){
+  clearTimeout(__serverQueueSyncTimer);
+  __serverQueueSyncTimer = setTimeout(syncQueueToServerNow, 800);
+}
+
+async function loadQueueFromServer(){
+  try{
+    const base = ((typeof settings !== "undefined" && settings.backendUrl) || "/.netlify/functions").replace(/\/$/, "");
+    const res = await fetch(base + "/queue");
+    const data = await res.json();
+    if(res.ok && Array.isArray(data.queue) && data.queue.length){
+      queue = data.queue;
+      if(typeof persistAll === "function") persistAll();
+      if(typeof renderAll === "function") renderAll();
+    }
+  }catch(err){
+    console.warn("Server queue load failed", err);
+  }
+}
+
+async function v32AutoPublishScheduler(){
+  try{
+    if(typeof queue === "undefined" || !Array.isArray(queue) || !queue.length) return;
+
+    const now = new Date();
+
+    for(let i=0;i<queue.length;i++){
+      const item = queue[i];
+      if(!item) continue;
+
+      if(item.status === "published" || item.status === "publishing") continue;
+
+      const timeStr = item.time || item.scheduledTime || "";
+      if(!timeStr) continue;
+
+      const parts = String(timeStr).match(/(\d{1,2})[:٫](\d{1,2})/);
+      if(!parts) continue;
+
+      const h = Number(parts[1]);
+      const m = Number(parts[2]);
+
+      const currentH = now.getHours();
+      const currentM = now.getMinutes();
+
+      if(currentH === h && currentM === m){
+        item.status = "publishing";
+        try{
+          if(typeof persistAll === "function") persistAll();
+        }catch(e){}
+
+        try{
+          await publishNowFromQueue(i, { skipConfirm: true });
+          item.status = "published";
+          item.publishedAt = new Date().toISOString();
+        }catch(err){
+          console.error(err);
+          item.status = "failed";
+          item.error = err.message || String(err);
+        }
+
+        try{
+          if(typeof persistAll === "function") persistAll();
+          if(typeof renderAll === "function") renderAll();
+        }catch(e){}
+      }
+    }
+  }catch(err){
+    console.error("Auto scheduler error", err);
+  }
+}
+
+setInterval(v32AutoPublishScheduler, 30000);
+
+/* ===== End v32 ===== */
+
+
 async function publishUploadedVideoNow(index){
   const video = videos[index];
   if(!video){
@@ -101,7 +230,10 @@ async function publishUploadedVideoNow(index){
     delayMin: 10,
     delayMax: 30,
     cloudinaryCloudName: "",
-    cloudinaryUploadPreset: ""
+    cloudinaryUploadPreset: "",
+    supabaseUrl: "",
+    supabaseAnonKey: "",
+    supabaseBucket: "reels"
   };
 
   let settings = loadSettings();
@@ -131,6 +263,9 @@ async function publishUploadedVideoNow(index){
         url: v.url || "",
         publicUrl: v.publicUrl || "",
         cloudinaryPublicId: v.cloudinaryPublicId || "",
+        supabaseUrl: v.supabaseUrl || "",
+        supabasePath: v.supabasePath || "",
+        uploadedToSupabase: !!v.uploadedToSupabase,
         hook: v.hook,
         caption: v.caption,
         status: v.status,
@@ -148,6 +283,7 @@ async function publishUploadedVideoNow(index){
         selected,
         savedAt: new Date().toISOString()
       }));
+      if (Array.isArray(queue)) syncQueueToServerDebounced();
     } catch (err) {
       console.error("فشل حفظ البيانات", err);
     }
@@ -220,6 +356,11 @@ async function publishUploadedVideoNow(index){
     const video = videos[index];
     if (!video) return alert("الفيديو غير موجود");
 
+    const publishKey = "video_" + (video.id || index);
+    if(!acquirePublishLock(publishKey)){
+      return alert("هذا الفيديو قيد النشر بالفعل");
+    }
+
     const officialAccounts = accounts.filter(a => a.official);
     if (!officialAccounts.length) return alert("لا يوجد حساب رسمي مربوط");
 
@@ -227,7 +368,7 @@ async function publishUploadedVideoNow(index){
     const videoUrl = video.publicUrl || video.url;
 
     if (!videoUrl || String(videoUrl).startsWith("blob:")) {
-      return alert("لا يمكن النشر الآن لأن الفيديو ليس له رابط عام. احفظ Cloudinary ثم أعد رفع الفيديو.");
+      return alert("لا يمكن النشر الآن لأن الفيديو ليس له رابط عام. ارفع الفيديو إلى Supabase Storage أو أي رابط HTTPS عام ثم أعد المحاولة.");
     }
 
     try {
@@ -251,6 +392,8 @@ async function publishUploadedVideoNow(index){
     } catch (err) {
       console.error(err);
       alert("فشل النشر: " + (err.message || err));
+    } finally {
+      releasePublishLock(publishKey);
     }
   }
 
@@ -261,16 +404,22 @@ async function publishUploadedVideoNow(index){
     const acc = accounts.find(a => a.official) || accounts[0];
     if (!acc) return alert("أضف حساباً أولاً");
 
+    const scheduledDate = new Date(Date.now() + 5 * 60 * 1000);
+    const scheduledTime = scheduledDate.toLocaleTimeString("ar", { hour: "2-digit", minute: "2-digit" });
     queue.push({
+      id: `${acc.id || acc.name}_${video.id || video.name}_${scheduledDate.getTime()}`,
       videoId: video.id,
       video: video.name,
+      videoUrl: publicVideoUrl(video),
       accountId: acc.id,
-      account: acc.name,
+      account: acc.name || acc.user || acc.username,
       market: acc.market || "رسمي",
       hook: video.hook,
       caption: video.caption,
-      time: new Date(Date.now() + 5 * 60 * 1000).toLocaleTimeString("ar", { hour: "2-digit", minute: "2-digit" }),
-      status: "مجدول يدوياً"
+      time: scheduledTime,
+      scheduledAt: scheduledDate.toISOString(),
+      status: "scheduled",
+      createdAt: new Date().toISOString()
     });
     persistAll();
     renderAll();
@@ -453,6 +602,9 @@ async function publishUploadedVideoNow(index){
       $("saveStorageBtn").addEventListener("click", () => {
         settings.cloudinaryCloudName = $("cloudinaryCloudName").value.trim();
         settings.cloudinaryUploadPreset = $("cloudinaryUploadPreset").value.trim();
+        if ($("supabaseUrl")) settings.supabaseUrl = $("supabaseUrl").value.trim();
+        if ($("supabaseAnonKey")) settings.supabaseAnonKey = $("supabaseAnonKey").value.trim();
+        if ($("supabaseBucket")) settings.supabaseBucket = $("supabaseBucket").value.trim() || "reels";
         saveSettings();
         persistAll();
         alert("تم حفظ بيانات Cloudinary");
@@ -613,6 +765,9 @@ async function publishUploadedVideoNow(index){
     if ($("backendUrl")) $("backendUrl").value = settings.backendUrl || "/.netlify/functions";
     if ($("cloudinaryCloudName")) $("cloudinaryCloudName").value = settings.cloudinaryCloudName || "";
     if ($("cloudinaryUploadPreset")) $("cloudinaryUploadPreset").value = settings.cloudinaryUploadPreset || "";
+    if ($("supabaseUrl")) $("supabaseUrl").value = settings.supabaseUrl || "";
+    if ($("supabaseAnonKey")) $("supabaseAnonKey").value = settings.supabaseAnonKey || "";
+    if ($("supabaseBucket")) $("supabaseBucket").value = settings.supabaseBucket || "reels";
     $("dailyCount").textContent = settings.daily;
     renderTimes();
     updateLabels();
@@ -665,6 +820,9 @@ async function publishUploadedVideoNow(index){
     if ($("backendUrl")) $("backendUrl").value = settings.backendUrl || "/.netlify/functions";
     if ($("cloudinaryCloudName")) $("cloudinaryCloudName").value = settings.cloudinaryCloudName || "";
     if ($("cloudinaryUploadPreset")) $("cloudinaryUploadPreset").value = settings.cloudinaryUploadPreset || "";
+    if ($("supabaseUrl")) $("supabaseUrl").value = settings.supabaseUrl || "";
+    if ($("supabaseAnonKey")) $("supabaseAnonKey").value = settings.supabaseAnonKey || "";
+    if ($("supabaseBucket")) $("supabaseBucket").value = settings.supabaseBucket || "reels";
     $("dailyCount").textContent = settings.daily;
     saveSettings();
   }
@@ -968,14 +1126,21 @@ persistAll();
     queue = [];
     videos.forEach((v, i) => {
       accounts.forEach((a, j) => {
+        const scheduledTime = addMinutesToTime(settings.times[(i + j) % settings.times.length], randomDelayMinutes(j));
         queue.push({
+          id: `${a.id || a.name}_${v.id || v.name}_${scheduledTime}_${Date.now()}`,
+          videoId: v.id,
           video: v.name,
-          account: a.name,
+          videoUrl: publicVideoUrl(v),
+          accountId: a.id,
+          account: a.name || a.user || a.username,
           market: a.market,
-          time: addMinutesToTime(settings.times[(i + j) % settings.times.length], randomDelayMinutes(j)),
-          status: "مجدول تلقائياً",
+          time: scheduledTime,
+          scheduledAt: toServerScheduledAt(scheduledTime),
+          status: "scheduled",
           hook: v.hook,
-          caption: makeCaption(a.market)
+          caption: makeCaption(a.market),
+          createdAt: new Date().toISOString()
         });
       });
     });
@@ -986,12 +1151,17 @@ persistAll();
   }
 
 
-  async function publishNowFromQueue(index) {
+  async function publishNowFromQueue(index, options = {}) {
     const item = queue[index];
     if (!item) return;
 
-    const ok = confirm("هل تريد نشر هذا الفيديو الآن على الحساب المحدد؟");
-    if (!ok) return;
+    const publishKey = "queue_" + (item.videoId || index);
+    if(!acquirePublishLock(publishKey)){
+      return alert("هذا الفيديو قيد النشر بالفعل");
+    }
+
+    const ok = options.skipConfirm ? true : confirm("هل تريد نشر هذا الفيديو الآن على الحساب المحدد؟");
+    if (!ok) { releasePublishLock(publishKey); return; }
 
     const btns = document.querySelectorAll(`[data-publish-now="${index}"]`);
     btns.forEach(b => {
@@ -1008,15 +1178,14 @@ persistAll();
         return;
       }
 
-      if (!video || !video.url) {
-        alert("لم يتم العثور على الفيديو داخل المتصفح. أعد رفع الفيديو ثم جرّب النشر.");
+      const videoUrl = item.videoUrl || publicVideoUrl(video);
+      if (!videoUrl) {
+        alert("لم يتم العثور على رابط الفيديو. أعد رفع الفيديو إلى Cloudinary ثم جرّب النشر.");
         return;
       }
 
-      // ملاحظة مهمة: Instagram API يحتاج video_url عام ومباشر من Storage.
-      // في هذه المرحلة إذا كان الفيديو blob محلي، نعرض رسالة واضحة بدل الفشل الصامت.
-      if (video.url.startsWith("blob:")) {
-        alert("النشر الآن يحتاج رابط فيديو عام من Storage مثل Cloudinary/S3. الفيديو الحالي موجود محلياً داخل المتصفح فقط. الربط والحسابات جاهزة، والخطوة القادمة هي إضافة Storage Upload.");
+      if (String(videoUrl).startsWith("blob:")) {
+        alert("النشر الآن يحتاج رابط فيديو عام من Storage مثل Cloudinary/S3. الفيديو الحالي موجود محلياً داخل المتصفح فقط.");
         return;
       }
 
@@ -1025,7 +1194,7 @@ persistAll();
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({
           accountId: account.id,
-          videoUrl: video.cloudinaryUrl || video.url,
+          videoUrl,
           caption: item.caption || item.hook || ""
         })
       });
@@ -1042,6 +1211,8 @@ persistAll();
       console.error(err);
       alert("فشل النشر الآن: " + (err.message || err));
     } finally {
+      releasePublishLock(publishKey);
+
       btns.forEach(b => {
         b.disabled = false;
         b.textContent = "نشر الآن";
@@ -1410,6 +1581,7 @@ persistAll();
     bind();
     setupPublishNowDelegation();
     hydrateAll();
+    loadQueueFromServer();
     loadSettingsToUI();
     renderAll();
     if (new URLSearchParams(window.location.search).get("connected")) {
@@ -1421,7 +1593,57 @@ persistAll();
 
 
 /* ===== v25 Cloudinary Upload Fix ===== */
+async function uploadVideoToSupabase(file){
+  const projectUrl = (settings && settings.supabaseUrl || localStorage.getItem("supabaseUrl") || "").trim().replace(/\/$/, "");
+  const anonKey = (settings && settings.supabaseAnonKey || localStorage.getItem("supabaseAnonKey") || "").trim();
+  const bucket = (settings && settings.supabaseBucket || localStorage.getItem("supabaseBucket") || "reels").trim() || "reels";
+
+  if(!projectUrl || !anonKey){
+    throw new Error("Supabase غير مضبوط. ضع Project URL و anon public key و Bucket ثم اضغط حفظ.");
+  }
+
+  const safeName = String(file.name || "video.mp4").replace(/[^a-zA-Z0-9._-]+/g, "_");
+  const path = `marrsile-reels/${Date.now()}_${Math.random().toString(16).slice(2)}_${safeName}`;
+  const uploadUrl = `${projectUrl}/storage/v1/object/${encodeURIComponent(bucket)}/${path}`;
+
+  const res = await fetch(uploadUrl, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${anonKey}`,
+      "apikey": anonKey,
+      "Content-Type": file.type || "video/mp4",
+      "x-upsert": "false"
+    },
+    body: file
+  });
+
+  const data = await res.json().catch(()=>({}));
+  if(!res.ok){
+    throw new Error("Supabase upload failed: " + (data.error || data.message || JSON.stringify(data)));
+  }
+
+  const publicUrl = `${projectUrl}/storage/v1/object/public/${encodeURIComponent(bucket)}/${path}`;
+  return { publicUrl, supabasePath: path, bucket, bytes: file.size, format: (file.name.split('.').pop() || '').toLowerCase() };
+}
+
 async function uploadVideoToCloudinary(file){
+  // v34: Supabase Storage هو الخيار الأساسي الأرخص. أبقينا اسم الدالة حتى لا نكسر كود النسخ السابقة.
+  const useSupabase = (settings && (settings.supabaseUrl || settings.supabaseAnonKey));
+  if(useSupabase){
+    const uploaded = await uploadVideoToSupabase(file);
+    return {
+      cloudinaryUrl: uploaded.publicUrl,
+      supabaseUrl: uploaded.publicUrl,
+      publicUrl: uploaded.publicUrl,
+      publicId: uploaded.supabasePath,
+      supabasePath: uploaded.supabasePath,
+      bucket: uploaded.bucket,
+      bytes: uploaded.bytes,
+      format: uploaded.format,
+      resourceType: "video"
+    };
+  }
+
   const cloudName =
     (settings && (settings.cloudinaryCloudName || settings.cloudName || settings.cloudinary_cloud_name)) ||
     localStorage.getItem("cloudinaryCloudName") ||
@@ -1435,7 +1657,7 @@ async function uploadVideoToCloudinary(file){
     "";
 
   if(!cloudName || !uploadPreset){
-    throw new Error("Cloudinary غير مضبوط. ضع Cloud Name و Upload Preset ثم اضغط حفظ.");
+    throw new Error("Supabase غير مضبوط، وCloudinary غير مضبوط أيضاً. ضع بيانات Supabase Storage في الإعدادات.");
   }
 
   const form = new FormData();
@@ -1444,32 +1666,12 @@ async function uploadVideoToCloudinary(file){
   form.append("folder", "virall-gcc-reels");
 
   const endpoint = `https://api.cloudinary.com/v1_1/${cloudName}/video/upload`;
-
-  const res = await fetch(endpoint, {
-    method: "POST",
-    body: form
-  });
-
+  const res = await fetch(endpoint, { method: "POST", body: form });
   const data = await res.json();
+  if(!res.ok || !data.secure_url){ throw new Error("Cloudinary upload failed: " + JSON.stringify(data)); }
 
-  if(!res.ok){
-    throw new Error("Cloudinary upload failed: " + JSON.stringify(data));
-  }
-
-  if(!data.secure_url){
-    throw new Error("Cloudinary لم يرجع رابط فيديو secure_url");
-  }
-
-  return {
-    cloudinaryUrl: data.secure_url,
-    publicId: data.public_id,
-    duration: data.duration,
-    bytes: data.bytes,
-    format: data.format,
-    resourceType: data.resource_type
-  };
+  return { cloudinaryUrl: data.secure_url, publicUrl: data.secure_url, publicId: data.public_id, duration: data.duration, bytes: data.bytes, format: data.format, resourceType: data.resource_type };
 }
-
 async function handleVideoFileWithCloudinary(file){
   const localUrl = URL.createObjectURL(file);
 
@@ -1481,8 +1683,11 @@ async function handleVideoFileWithCloudinary(file){
     url: localUrl,
     localUrl,
     cloudinaryUrl: "",
+    supabaseUrl: "",
+    publicUrl: "",
     uploadedToCloudinary: false,
-    status: "uploading_to_cloudinary",
+    uploadedToSupabase: false,
+    status: "uploading_to_supabase",
     createdAt: new Date().toISOString()
   };
 
@@ -1492,28 +1697,32 @@ async function handleVideoFileWithCloudinary(file){
 
   try{
     const uploaded = await uploadVideoToCloudinary(file);
-    tempVideo.url = uploaded.cloudinaryUrl;
-    tempVideo.cloudinaryUrl = uploaded.cloudinaryUrl;
+    tempVideo.url = uploaded.publicUrl || uploaded.cloudinaryUrl;
+    tempVideo.publicUrl = uploaded.publicUrl || uploaded.cloudinaryUrl;
+    tempVideo.supabaseUrl = uploaded.supabaseUrl || uploaded.publicUrl || "";
+    tempVideo.cloudinaryUrl = uploaded.cloudinaryUrl || uploaded.publicUrl;
     tempVideo.publicId = uploaded.publicId;
+    tempVideo.supabasePath = uploaded.supabasePath || "";
     tempVideo.duration = uploaded.duration;
     tempVideo.bytes = uploaded.bytes;
     tempVideo.format = uploaded.format;
     tempVideo.resourceType = uploaded.resourceType;
-    tempVideo.uploadedToCloudinary = true;
+    tempVideo.uploadedToCloudinary = !!uploaded.cloudinaryUrl;
+    tempVideo.uploadedToSupabase = !!uploaded.supabaseUrl || !!uploaded.supabasePath;
     tempVideo.status = "ready";
     tempVideo.compatible = true;
 
     saveAllData && saveAllData();
     if(typeof renderAll === "function") renderAll();
 
-    alert("تم رفع الفيديو إلى Cloudinary بنجاح");
+    alert("تم رفع الفيديو إلى Supabase Storage بنجاح وأصبح جاهزاً للنشر على Instagram");
     return tempVideo;
   }catch(err){
-    tempVideo.status = "cloudinary_failed";
+    tempVideo.status = "storage_failed";
     tempVideo.error = err.message || String(err);
     saveAllData && saveAllData();
     if(typeof renderAll === "function") renderAll();
-    alert("فشل رفع Cloudinary: " + tempVideo.error);
+    alert("فشل رفع الفيديو إلى التخزين العام: " + tempVideo.error);
     return tempVideo;
   }
 }
@@ -1526,6 +1735,8 @@ function installCloudinaryUploadInterceptor(){
 
     const files = Array.from(input.files).filter(f => String(f.type || "").startsWith("video/"));
     if(!files.length) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
 
     // Stop the old local-only upload path by clearing selected files after we take them.
     for(const file of files){
@@ -1551,8 +1762,8 @@ function injectCloudinaryStatusBadges(){
       if(!video || card.querySelector(".cloudinary-status")) return;
 
       const badge = document.createElement("div");
-      badge.className = "cloudinary-status" + (video.uploadedToCloudinary ? "" : " failed");
-      badge.textContent = video.uploadedToCloudinary ? "Cloudinary مرفوع ✅" : (video.status === "uploading_to_cloudinary" ? "جاري رفع Cloudinary..." : "غير مرفوع Cloudinary");
+      badge.className = "cloudinary-status" + ((video.uploadedToSupabase || video.uploadedToCloudinary) ? "" : " failed");
+      badge.textContent = (video.uploadedToSupabase || video.uploadedToCloudinary) ? "Supabase مرفوع ✅" : ((video.status === "uploading_to_supabase" || video.status === "uploading_to_cloudinary") ? "جاري رفع Supabase..." : "غير مرفوع Supabase");
       card.appendChild(badge);
     });
   }catch(err){}
@@ -1569,6 +1780,7 @@ function saveQueueChanges(){
     if(typeof v17SaveEverything === "function") v17SaveEverything();
     localStorage.setItem("virall_queue", JSON.stringify(queue || []));
     localStorage.setItem("virall_queue_data", JSON.stringify(queue || []));
+    if (typeof syncQueueToServerDebounced === "function") syncQueueToServerDebounced();
   }catch(err){
     console.error("Queue save error", err);
   }
