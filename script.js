@@ -34,14 +34,37 @@ function publicVideoUrl(video){
 async function syncQueueToServerNow(){
   try{
     if(typeof queue === "undefined" || !Array.isArray(queue)) return;
-    const payloadQueue = queue.map((item, index) => ({
-      ...item,
-      id: item.id || `${item.accountId || item.account || "acc"}_${item.videoId || item.video || "video"}_${item.time || index}`,
-      scheduledAt: item.scheduledAt || toServerScheduledAt(item.time || item.scheduledTime),
-      status: item.status || "scheduled"
-    }));
-
     const base = ((typeof settings !== "undefined" && settings.backendUrl) || "/.netlify/functions").replace(/\/$/, "");
+
+    // Pull server queue first, then merge locally. This prevents an open browser from overwriting
+    // statuses changed by the 24/7 scheduler, such as published/failed/nextAttemptAt.
+    let serverQueue = [];
+    try {
+      const res = await fetch(base + "/queue", { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(data.queue)) serverQueue = data.queue;
+    } catch(e) {}
+
+    const byId = new Map();
+    serverQueue.forEach(item => { if(item && item.id) byId.set(String(item.id), item); });
+
+    queue.forEach((item, index) => {
+      const id = item.id || `${item.accountId || item.account || "acc"}_${item.videoId || item.video || "video"}_${item.time || index}`;
+      const existing = byId.get(String(id));
+      const normalized = {
+        ...item,
+        id,
+        scheduledAt: item.scheduledAt || toServerScheduledAt(item.time || item.scheduledTime),
+        status: item.status || "scheduled"
+      };
+      if(existing && ["published", "publishing", "failed"].includes(existing.status)){
+        byId.set(String(id), { ...normalized, ...existing });
+      } else {
+        byId.set(String(id), { ...(existing || {}), ...normalized });
+      }
+    });
+
+    const payloadQueue = Array.from(byId.values()).filter(item => item && item.status !== "deleted");
     await fetch(base + "/queue", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1477,6 +1500,40 @@ persistAll();
     renderAll();
   }
 
+  async function runSchedulerNow() {
+    try {
+      const base = (settings.backendUrl || "/.netlify/functions").replace(/\/$/, "");
+      const res = await fetch(base + "/run-scheduler", { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error(data.error || JSON.stringify(data));
+      await loadQueueFromServer();
+      renderAll();
+      alert(`تم تشغيل محرك الجدولة الآن.\nالعناصر الجاهزة: ${data.dueCount || 0}\nالمعالجة: ${data.processed || 0}`);
+    } catch (err) {
+      recordError("فشل تشغيل محرك الجدولة يدوياً", err);
+      alert("فشل تشغيل محرك الجدولة: " + (err.message || err));
+    }
+  }
+
+  async function showSchedulerStatus() {
+    try {
+      const base = (settings.backendUrl || "/.netlify/functions").replace(/\/$/, "");
+      const res = await fetch(base + "/scheduler-status", { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error(data.error || JSON.stringify(data));
+      const lines = [
+        `الوقت الحالي: ${data.now}`,
+        `عدد عناصر الجدولة: ${data.queueCount}`,
+        `جاهزة للنشر الآن: ${data.dueCount}`,
+        `آخر تشغيل: ${data.logs && data.logs[0] ? data.logs[0].at + " / processed: " + (data.logs[0].processed || 0) : "لا يوجد سجل بعد"}`
+      ];
+      alert(lines.join("\n"));
+    } catch (err) {
+      recordError("فشل قراءة حالة محرك الجدولة", err);
+      alert("فشل قراءة حالة الجدولة: " + (err.message || err));
+    }
+  }
+
   function queueStatusLabel(status) {
     const map = { scheduled: "مجدول", publishing: "جاري النشر", published: "تم النشر", failed: "فشل", deleted: "محذوف" };
     return map[status] || status || "مجدول";
@@ -1486,6 +1543,8 @@ persistAll();
     const header = `
       <div class="queue-toolbar">
         <button class="secondary" id="refreshQueueBtn" type="button">تحديث حالة الجدولة</button>
+        <button class="secondary" id="schedulerStatusBtn" type="button">فحص محرك 24/7</button>
+        <button class="primary" id="runSchedulerNowBtn" type="button">تشغيل الجدولة الآن</button>
         <button class="danger" id="clearQueueBtn" type="button">حذف كل الجدولة</button>
       </div>`;
     $("queueList").innerHTML = header + (queue.length ? queue.map((q, i) => `
@@ -1506,6 +1565,10 @@ persistAll();
     if (refreshBtn) refreshBtn.addEventListener("click", refreshQueueStatus);
     const clearBtn = $("clearQueueBtn");
     if (clearBtn) clearBtn.addEventListener("click", clearQueue);
+    const runSchedulerBtn = $("runSchedulerNowBtn");
+    if (runSchedulerBtn) runSchedulerBtn.addEventListener("click", runSchedulerNow);
+    const schedulerStatusBtn = $("schedulerStatusBtn");
+    if (schedulerStatusBtn) schedulerStatusBtn.addEventListener("click", showSchedulerStatus);
     document.querySelectorAll("[data-publish-now]").forEach(btn => {
       btn.addEventListener("click", () => publishNowFromQueue(Number(btn.dataset.publishNow)));
     });

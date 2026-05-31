@@ -1,8 +1,9 @@
 {
   "name": "virall-engine-netlify-functions",
-  "version": "1.0.0",
+  "version": "1.0.41",
   "private": true,
   "dependencies": {
-    "@netlify/blobs": "^8.1.0"
+    "@netlify/blobs": "^8.1.0",
+    "@netlify/functions": "^3.0.0"
   }
 }
