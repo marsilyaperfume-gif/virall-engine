@@ -65,7 +65,7 @@ function due(item, now) {
 
 async function publishItem(item) {
   if (!item.accountId) throw new Error("Missing accountId");
-  if (!item.videoUrl) throw new Error("Missing public videoUrl. ارفع الفيديو إلى Cloudinary قبل الجدولة.");
+  if (!item.videoUrl) throw new Error("Missing public videoUrl. أعد رفع الفيديو حتى يحصل على رابط Supabase عام قبل الجدولة.");
   if (String(item.videoUrl).startsWith("blob:")) throw new Error("Video URL is local blob, not public.");
 
   const account = await getAccount(item.accountId);
@@ -146,3 +146,6 @@ exports.handler = async function() {
     await lockStore.delete("scheduled-publisher").catch(() => {});
   }
 };
+
+
+exports.config = { schedule: "*/5 * * * *" };

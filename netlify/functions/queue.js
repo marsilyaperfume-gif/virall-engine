@@ -1,7 +1,7 @@
 const corsHeaders = {
   "Access-Control-Allow-Origin": process.env.FRONTEND_URL || "*",
   "Access-Control-Allow-Headers": "Content-Type",
-  "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+  "Access-Control-Allow-Methods": "GET,POST,DELETE,PATCH,OPTIONS",
   "Content-Type": "application/json"
 };
 
@@ -50,6 +50,27 @@ exports.handler = async function(event) {
       const queue = incoming.map(normalizeItem);
       await writeQueue(queue);
       return { statusCode: 200, headers: corsHeaders, body: JSON.stringify({ ok: true, count: queue.length, queue }) };
+    }
+
+    if (event.httpMethod === "DELETE") {
+      const body = JSON.parse(event.body || "{}");
+      const id = String(body.id || event.queryStringParameters?.id || "");
+      const before = await readQueue();
+      const queue = id ? before.filter(item => String(item.id) !== id) : [];
+      await writeQueue(queue);
+      return { statusCode: 200, headers: corsHeaders, body: JSON.stringify({ ok: true, deleted: id || "all", count: queue.length, queue }) };
+    }
+
+    if (event.httpMethod === "PATCH") {
+      const body = JSON.parse(event.body || "{}");
+      const id = String(body.id || "");
+      const patch = body.patch || {};
+      const queue = await readQueue();
+      const idx = queue.findIndex(item => String(item.id) === id);
+      if (idx < 0) return { statusCode: 404, headers: corsHeaders, body: JSON.stringify({ ok: false, error: "Queue item not found" }) };
+      queue[idx] = { ...queue[idx], ...patch, updatedAt: new Date().toISOString() };
+      await writeQueue(queue);
+      return { statusCode: 200, headers: corsHeaders, body: JSON.stringify({ ok: true, item: queue[idx], queue }) };
     }
 
     return { statusCode: 405, headers: corsHeaders, body: JSON.stringify({ error: "Method not allowed" }) };

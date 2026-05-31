@@ -294,3 +294,12 @@
 .error-log{min-height:260px;max-height:520px;overflow:auto;white-space:pre-wrap;direction:ltr;text-align:left;background:#10131f;border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:16px;font-size:13px;line-height:1.65;color:#f3f4f6}
 .danger{background:#b91c1c;color:#fff;border:0;border-radius:12px;padding:10px 14px;cursor:pointer}
 .upload-progress-note{font-size:13px;opacity:.8;margin-top:8px}
+
+/* v39 queue management */
+.queue-toolbar{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 14px 0}
+.queue-controls{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+button.danger,.delete-queue-btn{background:#3b1116;color:#fff;border:1px solid rgba(255,80,100,.35)}
+button.secondary{background:rgba(255,255,255,.08);color:inherit;border:1px solid rgba(255,255,255,.14)}
+.queue-item.status-published{opacity:.72;border-color:rgba(80,255,160,.25)}
+.queue-item.status-failed{border-color:rgba(255,80,100,.35)}
+.queue-item.status-publishing{border-color:rgba(255,200,80,.35)}

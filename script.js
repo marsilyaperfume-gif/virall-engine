@@ -38,7 +38,7 @@ async function syncQueueToServerNow(){
       ...item,
       id: item.id || `${item.accountId || item.account || "acc"}_${item.videoId || item.video || "video"}_${item.time || index}`,
       scheduledAt: item.scheduledAt || toServerScheduledAt(item.time || item.scheduledTime),
-      status: item.status === "published" ? "published" : (item.status === "failed" ? "failed" : "scheduled")
+      status: item.status || "scheduled"
     }));
 
     const base = ((typeof settings !== "undefined" && settings.backendUrl) || "/.netlify/functions").replace(/\/$/, "");
@@ -62,7 +62,7 @@ async function loadQueueFromServer(){
     const base = ((typeof settings !== "undefined" && settings.backendUrl) || "/.netlify/functions").replace(/\/$/, "");
     const res = await fetch(base + "/queue");
     const data = await res.json();
-    if(res.ok && Array.isArray(data.queue) && data.queue.length){
+    if(res.ok && Array.isArray(data.queue)){
       queue = data.queue;
       if(typeof persistAll === "function") persistAll();
       if(typeof renderAll === "function") renderAll();
@@ -515,7 +515,7 @@ async function publishUploadedVideoNow(index){
       account: acc.name || acc.user || acc.username,
       market: acc.market || "رسمي",
       hook: video.hook,
-      caption: video.caption,
+      caption: makeCaption(acc.market || "عام الخليج", video.hook, video.name),
       time: scheduledTime,
       scheduledAt: scheduledDate.toISOString(),
       status: "scheduled",
@@ -847,29 +847,112 @@ async function publishUploadedVideoNow(index){
     return rand(gulfHooks);
   }
 
-  function makeCaption(market) {
-    const marketText = market && market !== "عام الخليج" ? `داخل ${market}` : "في الخليج";
-    const offers = {
-      discount: "خصومات قوية",
-      freeShipping: "توصيل مجاني",
-      cod: "دفع عند الاستلام",
-      bundle: "اطلب أكثر ووفر أكثر",
-      premium: "فخامة وسعر منافس"
+  function makeCaption(market, hookText = "", videoName = "") {
+    const markets = {
+      "السعودية": { place: "بالسعودية", girls: "يا بنات السعودية", people: "يا أهل السعودية" },
+      "الإمارات": { place: "بالإمارات", girls: "يا بنات الإمارات", people: "يا أهل الإمارات" },
+      "قطر": { place: "بقطر", girls: "يا بنات قطر", people: "يا أهل قطر" },
+      "الكويت": { place: "بالكويت", girls: "يا بنات الكويت", people: "يا أهل الكويت" },
+      "عمان": { place: "بعُمان", girls: "يا بنات عُمان", people: "يا أهل عُمان" },
+      "البحرين": { place: "بالبحرين", girls: "يا بنات البحرين", people: "يا أهل البحرين" }
     };
-    const ctas = {
-      bio: "اطلب من الرابط في البايو",
-      whatsapp: "راسلنا واتساب",
-      limited: "اطلب قبل نفاد الكمية",
-      shopNow: "تسوق الآن"
-    };
-    const templates = [
-      `${rand(captionOpeners)} ${marketText}. ${offers[settings.offerType]}. ${rand(captionBenefits)} و${rand(captionBenefits)}. ${rand(captionCTAs)}.`,
-      `عطور عالمية أصلية بأسعار منافسة ${marketText}. ${offers[settings.offerType]}. ${ctas[settings.ctaMode]}.`,
-      `لو تدور على عطر فخم بسعر ذكي، هذه التشكيلة لك ${marketText}. ${rand(captionBenefits)}. ${rand(captionCTAs)}.`,
-      `ريحة فخمة وسعر أذكى ${marketText}. ${offers[settings.offerType]}. ${ctas[settings.ctaMode]}.`,
-      `${rand(captionOpeners)} — ${offers[settings.offerType]}. ${ctas[settings.ctaMode]}.`
+    const m = markets[market] || { place: "بالخليج", girls: "يا بنات الخليج", people: "يا أهل الخليج" };
+    const hook = hookText || makeHook(videoName);
+    const namesFemale = ["رهف", "فاطمة", "نورة", "مها", "دانة", "سارة", "ريم", "العنود", "جواهر", "مريم", "لطيفة", "هند"];
+    const namesMale = ["محمد", "عبدالله", "خالد", "فيصل", "راشد", "سعود", "حمد", "ناصر", "تركي", "ماجد"];
+    const reactions = [
+      "أول ما دخلت المكان الكل سألها: وش العطر؟",
+      "قالت لي بعد أول طلعة: مستحيل أغيّره بعد اليوم",
+      "وصلها الطلب وجربته، وبعد ساعتين رجعت تطلب واحد هدية",
+      "كانت تدور على عطر فخم وسعره منطقي… وهذا كان الاختيار",
+      "أكثر تعليق جاها: ريحتك فخمة مرة",
+      "ما توقعت الثبات يكون كذا، خصوصاً على السعر"
     ];
-    return clean([rand(templates), settings.captionFooter ? settings.captionFooter + "." : "", settings.hashtags]);
+    const sensory = [
+      "ريحة فخمة، نظيفة، وتبقى معك بدون إزعاج",
+      "ثبات واضح وحضور يخلي العطر ينلاحظ من أول دقيقة",
+      "فخامة هادئة تناسب الدوام، الطلعات، والمناسبات",
+      "يعطي إحساس مرتب وغالي حتى قبل ما تتكلم",
+      "عطر من النوع اللي يعلق بالذاكرة",
+      "الرشة الأولى تكفي تفهم ليش الناس تسأل عنه"
+    ];
+    const questions = [
+      "تحب العطر يكون ناعم وفخم ولا قوي وملفت؟",
+      "مين مثلي يختار العطر قبل اللبس؟",
+      "لو أحد سألك عن عطرك، تقول اسمه ولا تخليه سر؟",
+      "أكثر شيء يهمك بالعطر: الثبات ولا الفخامة؟",
+      "جربت عطر يخلي الناس توقفك وتسألك عنه؟"
+    ];
+    const viralHooks = [
+      hook,
+      "لا تشتري عطر جديد قبل ما تشوف هذا 👀",
+      "هذا العطر عليه كلام كثير بالخليج 😮‍💨",
+      "لو تحب الروائح الفخمة… ركّز هنا",
+      "الريحة اللي تخلي حضورك واضح بدون مبالغة",
+      "سعره شيء… وريحته شيء ثاني تماماً",
+      "هذا مو إعلان عطر، هذه تجربة لازم تعرفها",
+      "إذا سألوك وش حاط… لا تقول ما حذرتك 😭"
+    ];
+    const ctas = {
+      bio: ["شوف التشكيلة من الرابط في البايو", "الرابط في البايو لو تبغى تشوف السعر", "اطلبه من الرابط في البايو قبل ما تخلص الكمية"],
+      whatsapp: ["راسلنا واتساب ونرشح لك الأنسب", "اكتب لنا واتساب ونساعدك تختار", "لو محتار، واتساب ونختار لك حسب ذوقك"],
+      limited: ["الكمية محدودة والطلب يزيد يومياً", "لا تنتظر لين تخلص الكمية", "المتوفر محدود خصوصاً على العطور الأكثر طلباً"],
+      shopNow: ["اطلب الآن وخلي عطرك القادم مختلف", "شوف العروض الحالية وقرر", "اختار عطرك اليوم وخلك جاهز للطلعات"]
+    };
+    const ctaList = ctas[settings.ctaMode] || ctas.bio;
+    const offerLine = {
+      discount: "العرض الحالي يخلي التجربة أذكى بكثير.",
+      freeShipping: "والأجمل إن التوصيل أسهل مما تتوقع.",
+      cod: "والدفع عند الاستلام يخلي الطلب مريح أكثر.",
+      bundle: "خذ أكثر من عطر وخلّ كل مناسبة لها ريحتها.",
+      premium: "فخامة واضحة بسعر يناسب الذوق الذكي."
+    }[settings.offerType] || "فخامة وسعر منافس.";
+
+    const story = () => {
+      const name = Math.random() > 0.45 ? rand(namesFemale) : rand(namesMale);
+      return `${rand(viralHooks)}
+
+${name} طلب/ت العطر كتجربة… وما توقع/ت إن ${rand(reactions)} 😭✨
+
+${rand(sensory)}.
+
+${offerLine}
+
+${rand(ctaList)} 🤍`;
+    };
+    const question = () => `${rand(viralHooks)}
+
+${rand(questions)}
+
+لأن هذا العطر تحديداً يعطيك ${rand(sensory)}.
+
+${offerLine}
+
+${rand(ctaList)} ✨`;
+    const direct = () => `${rand(viralHooks)}
+
+${m.people}… إذا تبغى عطر يرفع حضورك بدون ما يكون مزعج، هذا خيار يستاهل التجربة.
+
+${rand(sensory)}.
+
+${rand(ctaList)} 🔥`;
+    const girls = () => `${rand(viralHooks)}
+
+${m.girls}، هذا من العطور اللي تخلي السؤال يتكرر: وش اسم عطرك؟ 😭
+
+فخم، مرتب، ويناسب الهدية والاستخدام اليومي.
+
+${rand(ctaList)} 🤍`;
+    const shortHook = () => `${rand(viralHooks)}
+
+${rand(sensory)}.
+
+${offerLine}
+
+${rand(ctaList)}.`;
+    const templates = [story, story, question, direct, girls, shortHook];
+    const base = rand(templates)();
+    return clean([base, settings.captionFooter ? "\n\n" + settings.captionFooter : "", settings.hashtags ? "\n\n" + settings.hashtags : ""]);
   }
 
   function readSettingsFromUI() {
@@ -1306,12 +1389,12 @@ persistAll();
 
       const videoUrl = item.videoUrl || publicVideoUrl(video);
       if (!videoUrl) {
-        alert("لم يتم العثور على رابط الفيديو. أعد رفع الفيديو إلى Cloudinary ثم جرّب النشر.");
+        alert("لم يتم العثور على رابط الفيديو. أعد رفع الفيديو حتى يحصل على رابط Supabase عام ثم جرّب النشر.");
         return;
       }
 
       if (String(videoUrl).startsWith("blob:")) {
-        alert("النشر الآن يحتاج رابط فيديو عام من Storage مثل Cloudinary/S3. الفيديو الحالي موجود محلياً داخل المتصفح فقط.");
+        alert("النشر الآن يحتاج رابط فيديو عام من Storage مثل Supabase/S3. الفيديو الحالي موجود محلياً داخل المتصفح فقط.");
         return;
       }
 
@@ -1335,6 +1418,11 @@ persistAll();
       alert("تم إرسال النشر إلى Instagram بنجاح.");
     } catch (err) {
       console.error(err);
+      item.status = "failed";
+      item.error = err.message || String(err);
+      persistAll();
+      renderAll();
+      recordError("فشل النشر اليدوي", err, { queueItem: item.id, video: item.video });
       alert("فشل النشر الآن: " + (err.message || err));
     } finally {
       releasePublishLock(publishKey);
@@ -1347,21 +1435,82 @@ persistAll();
   }
 
 
+  async function deleteQueueItem(index) {
+    const item = queue[index];
+    if (!item) return;
+    const ok = confirm("هل تريد حذف هذا الفيديو من الجدولة؟");
+    if (!ok) return;
+    try {
+      const base = (settings.backendUrl || "/.netlify/functions").replace(/\/$/, "");
+      if (item.id) {
+        await fetch(base + "/queue", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: item.id })
+        });
+      }
+    } catch (err) {
+      recordError("فشل حذف عنصر من الجدولة على السيرفر", err, { id: item.id });
+    }
+    queue.splice(index, 1);
+    persistAll();
+    renderAll();
+  }
+
+  async function clearQueue() {
+    if (!queue.length) return alert("لا توجد عناصر في الجدولة");
+    const ok = confirm("هل تريد حذف كل الجدولة؟");
+    if (!ok) return;
+    try {
+      const base = (settings.backendUrl || "/.netlify/functions").replace(/\/$/, "");
+      await fetch(base + "/queue", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+    } catch (err) {
+      recordError("فشل حذف كل الجدولة على السيرفر", err);
+    }
+    queue = [];
+    persistAll();
+    renderAll();
+  }
+
+  async function refreshQueueStatus() {
+    await loadQueueFromServer();
+    renderAll();
+  }
+
+  function queueStatusLabel(status) {
+    const map = { scheduled: "مجدول", publishing: "جاري النشر", published: "تم النشر", failed: "فشل", deleted: "محذوف" };
+    return map[status] || status || "مجدول";
+  }
+
   function renderQueue() {
-    $("queueList").innerHTML = queue.length ? queue.map((q, i) => `
-      <div class="queue-item">
+    const header = `
+      <div class="queue-toolbar">
+        <button class="secondary" id="refreshQueueBtn" type="button">تحديث حالة الجدولة</button>
+        <button class="danger" id="clearQueueBtn" type="button">حذف كل الجدولة</button>
+      </div>`;
+    $("queueList").innerHTML = header + (queue.length ? queue.map((q, i) => `
+      <div class="queue-item status-${escapeHtml(q.status || "scheduled")}">
         <b>${escapeHtml(q.video || q.title || "فيديو")}</b>
         <span class="muted">${escapeHtml(q.account || "")} · ${escapeHtml(q.market || "")} · ${escapeHtml(q.time || "")}</span>
-        <p>${escapeHtml(q.hook || "")}</p>
-        <span class="warn">${escapeHtml(q.status || "مجدول")}</span>
+        <p><strong>${escapeHtml(q.hook || "")}</strong></p>
+        <p class="muted">${escapeHtml((q.caption || "").slice(0, 180))}${(q.caption || "").length > 180 ? "…" : ""}</p>
+        <span class="warn">${escapeHtml(queueStatusLabel(q.status))}${q.error ? " — " + escapeHtml(String(q.error).slice(0, 120)) : ""}</span>
         <div class="queue-controls">
-          <button class="publish-now-btn" data-publish-now="${i}" type="button">نشر الآن</button>
+          <button class="publish-now-btn" data-publish-now="${i}" type="button" ${q.status === "published" ? "disabled" : ""}>نشر الآن</button>
+          <button class="delete-queue-btn" data-delete-queue="${i}" type="button">حذف من الجدولة</button>
         </div>
       </div>
-    `).join("") : `<div class="queue-item">شغّل Autopilot ليبني الجدول تلقائياً.</div>`;
+    `).join("") : `<div class="queue-item">شغّل Autopilot ليبني الجدول تلقائياً.</div>`);
 
+    const refreshBtn = $("refreshQueueBtn");
+    if (refreshBtn) refreshBtn.addEventListener("click", refreshQueueStatus);
+    const clearBtn = $("clearQueueBtn");
+    if (clearBtn) clearBtn.addEventListener("click", clearQueue);
     document.querySelectorAll("[data-publish-now]").forEach(btn => {
       btn.addEventListener("click", () => publishNowFromQueue(Number(btn.dataset.publishNow)));
+    });
+    document.querySelectorAll("[data-delete-queue]").forEach(btn => {
+      btn.addEventListener("click", () => deleteQueueItem(Number(btn.dataset.deleteQueue)));
     });
   }
 
@@ -1731,114 +1880,4 @@ persistAll();
 
 
 
-/* ===== v26 Queue Delete Controls ===== */
-function saveQueueChanges(){
-  try{
-    if(typeof saveAllData === "function") saveAllData();
-    if(window.__virallStore && typeof window.__virallStore.save === "function") window.__virallStore.save();
-    if(typeof v17SaveEverything === "function") v17SaveEverything();
-    localStorage.setItem("virall_queue", JSON.stringify(queue || []));
-    localStorage.setItem("virall_queue_data", JSON.stringify(queue || []));
-    if (typeof syncQueueToServerDebounced === "function") syncQueueToServerDebounced();
-  }catch(err){
-    console.error("Queue save error", err);
-  }
-}
-
-function deleteQueueItem(index){
-  if(!Array.isArray(queue)) return;
-  const item = queue[index];
-  if(!item) return;
-
-  const ok = confirm("هل تريد حذف هذا الفيديو من الجدولة؟");
-  if(!ok) return;
-
-  queue.splice(index, 1);
-  saveQueueChanges();
-
-  if(typeof renderAll === "function") renderAll();
-  setTimeout(injectQueueDeleteControls, 200);
-}
-
-function clearAllQueue(){
-  if(!Array.isArray(queue) || !queue.length){
-    alert("لا توجد فيديوهات مجدولة حالياً");
-    return;
-  }
-
-  const ok = confirm("هل تريد حذف كل الفيديوهات من الجدولة؟");
-  if(!ok) return;
-
-  queue.length = 0;
-  saveQueueChanges();
-
-  if(typeof renderAll === "function") renderAll();
-  setTimeout(injectQueueDeleteControls, 200);
-
-  alert("تم حذف كل الجدولة");
-}
-
-function injectQueueDeleteControls(){
-  try{
-    const queueSection =
-      document.querySelector("#queue") ||
-      document.querySelector("[data-section='queue']") ||
-      Array.from(document.querySelectorAll("section, .card, .panel, div")).find(el =>
-        (el.textContent || "").includes("Autopilot Queue")
-      );
-
-    if(queueSection && !queueSection.querySelector(".clear-queue-btn")){
-      const clearBtn = document.createElement("button");
-      clearBtn.className = "clear-queue-btn";
-      clearBtn.type = "button";
-      clearBtn.textContent = "حذف كل الجدولة";
-      clearBtn.onclick = clearAllQueue;
-      queueSection.prepend(clearBtn);
-    }
-
-    document.querySelectorAll(".queue-item").forEach((card, index)=>{
-      if(card.querySelector(".delete-queue-item-btn")) return;
-
-      const controls = document.createElement("div");
-      controls.className = "queue-manage-controls";
-
-      const deleteBtn = document.createElement("button");
-      deleteBtn.className = "delete-queue-item-btn";
-      deleteBtn.type = "button";
-      deleteBtn.textContent = "حذف من الجدولة";
-      deleteBtn.onclick = () => deleteQueueItem(index);
-
-      controls.appendChild(deleteBtn);
-      card.appendChild(controls);
-    });
-
-    // fallback for queue cards that don't use .queue-item
-    const possibleCards = Array.from(document.querySelectorAll("div")).filter(el => {
-      const txt = el.textContent || "";
-      return txt.includes("مجدول تلقائياً") && !el.querySelector(".delete-queue-item-btn");
-    });
-
-    possibleCards.forEach((card, index)=>{
-      const realIndex = Math.min(index, (queue || []).length - 1);
-      if(realIndex < 0) return;
-
-      const controls = document.createElement("div");
-      controls.className = "queue-manage-controls";
-
-      const deleteBtn = document.createElement("button");
-      deleteBtn.className = "delete-queue-item-btn";
-      deleteBtn.type = "button";
-      deleteBtn.textContent = "حذف من الجدولة";
-      deleteBtn.onclick = () => deleteQueueItem(realIndex);
-
-      controls.appendChild(deleteBtn);
-      card.appendChild(controls);
-    });
-
-  }catch(err){
-    console.error("Queue controls inject error", err);
-  }
-}
-
-setInterval(injectQueueDeleteControls, 1200);
-/* ===== End v26 Queue Delete Controls ===== */
+/* v39: Queue delete controls are now native inside renderQueue. */
