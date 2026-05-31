@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Marrsile Auto Reels v10.5 Clean Fixed</title>
+<title>Marrsile Auto Reels v37 Clean Supabase Diagnostics</title>
 <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
@@ -12,8 +12,8 @@
 <section id="loginScreen" class="login">
   <div class="login-card">
     <div class="mark">M</div>
-    <h1>MARRSILE <span>AUTO REELS V10.5</span></h1>
-    <p>نسخة نظيفة ومفحوصة: رفع فيديوهات + توليد هوكات + حفظ إعدادات + Autopilot.</p>
+    <h1>MARRSILE <span>AUTO REELS V37</span></h1>
+    <p>نسخة نظيفة: Supabase من Netlify + سجل أخطاء واضح + نشر 24/7.</p>
     <input id="email" placeholder="Email"/>
     <input id="password" placeholder="Password" type="password"/>
     <button id="loginBtn">دخول</button>
@@ -32,7 +32,8 @@
     <button class="nav" data-tab="accounts">الحسابات</button>
     <button class="nav" data-tab="hooks">مصنع الهوكات</button>
     <button class="nav" data-tab="queue">Autopilot Queue</button>
-    <button class="nav" data-tab="settings">الربط</button>
+    <button class="nav" data-tab="settings">النظام</button>
+    <button class="nav" data-tab="errors">الأخطاء</button>
   </aside>
 
   <main>
@@ -51,7 +52,7 @@
     <section id="dashboard" class="tab">
       <div class="hero card">
         <div>
-          <span class="pill">v10.5 Clean Fixed</span>
+          <span class="pill">v37 Clean 24/7</span>
           <h1>الرفع والهوكات يعملان الآن بكود نظيف</h1>
           <p>تم فصل محرك الرفع عن محرك الهوكات لمنع الأخطاء. زر توليد الهوك يعمل من كل مكان، والرفع يدعم الضغط والسحب والإفلات.</p>
           <div class="actions">
@@ -326,21 +327,37 @@
     <section id="settings" class="tab hidden">
       <div class="grid2">
         <div class="card">
-          <h3>Netlify Functions</h3>
-          <p>لا تحتاج Render. الربط الرسمي يعمل عبر Netlify Functions داخل نفس الموقع.</p>
-          <input id="backendUrl" value="/.netlify/functions" placeholder="/.netlify/functions"/>
-          <button class="secondary full" id="saveBackendBtn">حفظ</button>
+          <h3>حالة النظام</h3>
+          <p>هذه النسخة لا تحتاج إدخال Supabase أو Netlify من داخل الموقع. كل الإعدادات تُقرأ تلقائياً من Netlify Environment Variables.</p>
+          <div id="systemStatus" class="status-box">جاري فحص الربط...</div>
+          <button class="secondary full" id="checkSystemBtn">فحص الربط الآن</button>
         </div>
         <div class="card">
-          <h3>Storage</h3>
-          <p>للنشر الحقيقي نحتاج رابط HTTPS عام. الخيار الافتراضي هنا Supabase Storage، ويمكن ترك Cloudinary كخيار احتياطي.</p>
-          <input id="supabaseUrl" placeholder="Supabase Project URL مثل https://xxxx.supabase.co"/>
-          <input id="supabaseAnonKey" placeholder="Supabase anon public key"/>
-          <input id="supabaseBucket" placeholder="Bucket name" value="reels"/>
-          <input id="cloudinaryCloudName" placeholder="Cloudinary Cloud Name - اختياري"/>
-          <input id="cloudinaryUploadPreset" placeholder="Upload Preset - اختياري"/>
-          <button class="secondary full" id="saveStorageBtn">حفظ</button>
+          <h3>طريقة العمل</h3>
+          <p>ارفع الفيديو فقط. النظام سيرفعه إلى Supabase Storage ويولّد رابط HTTPS عام مناسب لـ Instagram.</p>
+          <ul class="simple-list">
+            <li>Bucket المطلوب: <b>reels</b></li>
+            <li>يجب أن يكون Public</li>
+            <li>يجب وجود Policy للـ INSERT للـ anon</li>
+            <li>سجل الأخطاء يظهر في قسم الأخطاء</li>
+          </ul>
         </div>
+      </div>
+    </section>
+
+    <section id="errors" class="tab hidden">
+      <div class="card">
+        <div class="section-head">
+          <div>
+            <h3>سجل الأخطاء</h3>
+            <p>إذا فشل الرفع أو النشر انسخ هذا السجل وأرسله لي لأحدد السبب مباشرة.</p>
+          </div>
+          <div class="row-actions">
+            <button class="secondary" id="copyErrorsBtn">نسخ الأخطاء</button>
+            <button class="danger" id="clearErrorsBtn">مسح</button>
+          </div>
+        </div>
+        <pre id="errorLog" class="error-log">لا توجد أخطاء حتى الآن.</pre>
       </div>
     </section>
   </main>

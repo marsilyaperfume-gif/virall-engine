@@ -285,3 +285,12 @@
 .clear-queue-btn:hover{
   transform:translateY(-1px) scale(1.02);
 }
+
+/* ===== v37 clean diagnostics ===== */
+.status-box{padding:14px;border-radius:14px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);line-height:1.8;white-space:pre-wrap;direction:ltr;text-align:left}
+.simple-list{line-height:2;margin:0;padding-inline-start:22px}
+.section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:14px}
+.row-actions{display:flex;gap:8px;flex-wrap:wrap}
+.error-log{min-height:260px;max-height:520px;overflow:auto;white-space:pre-wrap;direction:ltr;text-align:left;background:#10131f;border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:16px;font-size:13px;line-height:1.65;color:#f3f4f6}
+.danger{background:#b91c1c;color:#fff;border:0;border-radius:12px;padding:10px 14px;cursor:pointer}
+.upload-progress-note{font-size:13px;opacity:.8;margin-top:8px}

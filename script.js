@@ -242,8 +242,83 @@ async function publishUploadedVideoNow(index){
   let queue = [];
   let selected = 0;
   let autopilot = false;
+  let publicConfigLoaded = false;
+  let diagnosticErrors = [];
 
   const APP_STORE_KEY = "marrsile_growth_engine_v18";
+
+  function recordError(title, err, extra = {}) {
+    const entry = {
+      time: new Date().toISOString(),
+      title: title || "Error",
+      message: err && err.message ? err.message : String(err || ""),
+      status: extra.status || "",
+      details: extra.details || "",
+      file: extra.file || "",
+      endpoint: extra.endpoint || ""
+    };
+    diagnosticErrors.unshift(entry);
+    diagnosticErrors = diagnosticErrors.slice(0, 30);
+    try { localStorage.setItem("marrsile_error_log_v37", JSON.stringify(diagnosticErrors)); } catch(e) {}
+    renderErrorLog();
+    console.error("[Marrsile Diagnostic]", entry, err);
+  }
+
+  function loadErrorLog() {
+    try { diagnosticErrors = JSON.parse(localStorage.getItem("marrsile_error_log_v37") || "[]") || []; } catch(e) { diagnosticErrors = []; }
+  }
+
+  function renderErrorLog() {
+    const el = $("errorLog");
+    if (!el) return;
+    if (!diagnosticErrors.length) {
+      el.textContent = "لا توجد أخطاء حتى الآن.";
+      return;
+    }
+    el.textContent = diagnosticErrors.map((e, i) => (
+      `#${i + 1} ${e.time}\n` +
+      `TITLE: ${e.title}\n` +
+      `MESSAGE: ${e.message}\n` +
+      (e.status ? `STATUS: ${e.status}\n` : "") +
+      (e.endpoint ? `ENDPOINT: ${e.endpoint}\n` : "") +
+      (e.file ? `FILE: ${e.file}\n` : "") +
+      (e.details ? `DETAILS: ${typeof e.details === "string" ? e.details : JSON.stringify(e.details, null, 2)}\n` : "")
+    )).join("\n------------------------------\n");
+  }
+
+  async function loadPublicConfig(force = false) {
+    if (publicConfigLoaded && !force && settings.supabaseUrl && settings.supabaseAnonKey) return settings;
+    const base = (settings.backendUrl || "/.netlify/functions").replace(/\/$/, "");
+    const endpoint = base + "/public-config";
+    try {
+      const res = await fetch(endpoint, { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        throw new Error(data && data.missing ? `Public config غير مكتمل: ${JSON.stringify(data.missing)}` : `Public config failed HTTP ${res.status}`);
+      }
+      settings.supabaseUrl = String(data.supabaseUrl || "").replace(/\/$/, "");
+      settings.supabaseAnonKey = String(data.supabaseAnonKey || "");
+      settings.supabaseBucket = String(data.supabaseBucket || "reels");
+      publicConfigLoaded = true;
+      try { persistAll(); } catch(e) {}
+      updateSystemStatus(data);
+      return settings;
+    } catch (err) {
+      recordError("فشل قراءة إعدادات Netlify/Supabase", err, { endpoint });
+      updateSystemStatus({ ok: false, error: err.message });
+      throw err;
+    }
+  }
+
+  function updateSystemStatus(data) {
+    const el = $("systemStatus");
+    if (!el) return;
+    if (data && data.ok) {
+      el.textContent = `OK ✅\nSUPABASE_URL: ${data.supabaseUrl || settings.supabaseUrl}\nBUCKET: ${data.supabaseBucket || settings.supabaseBucket || "reels"}\nANON KEY: موجود ✅`;
+    } else {
+      el.textContent = `FAILED ❌\n${(data && data.error) || "الإعدادات غير مكتملة"}`;
+    }
+  }
 
   function safeParseStore() {
     try {
@@ -319,69 +394,68 @@ async function publishUploadedVideoNow(index){
   }
 
   async function uploadToCloudinary(file) {
-    // v36: Supabase Storage first. Config is loaded from Netlify function if the UI fields are empty.
-    await ensureSupabaseConfig();
+    // v37 clean: Supabase only. Configuration is loaded from Netlify Environment Variables.
+    await loadPublicConfig();
+
     const supabaseUrl = (settings.supabaseUrl || "").trim().replace(/\/$/, "");
     const supabaseAnonKey = (settings.supabaseAnonKey || "").trim();
     const supabaseBucket = (settings.supabaseBucket || "reels").trim() || "reels";
 
-    if (supabaseUrl && supabaseAnonKey) {
-      const safeName = String(file.name || "video.mp4").replace(/[^a-zA-Z0-9._-]+/g, "_");
-      const path = `marrsile-reels/${Date.now()}_${Math.random().toString(16).slice(2)}_${safeName}`;
-      const endpoint = `${supabaseUrl}/storage/v1/object/${encodeURIComponent(supabaseBucket)}/${path}`;
-
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${supabaseAnonKey}`,
-          "apikey": supabaseAnonKey,
-          "Content-Type": file.type || "video/mp4",
-          "x-upsert": "true"
-        },
-        body: file
-      });
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        const msg = data.error || data.message || JSON.stringify(data) || `HTTP ${res.status}`;
-        throw new Error("فشل رفع الفيديو إلى Supabase: " + msg);
-      }
-
-      const publicUrl = `${supabaseUrl}/storage/v1/object/public/${encodeURIComponent(supabaseBucket)}/${path}`;
-      return {
-        url: publicUrl,
-        publicUrl,
-        cloudinaryPublicId: path,
-        supabasePath: path,
-        uploadedToSupabase: true,
-        localOnly: false
-      };
+    if (!supabaseUrl || !supabaseAnonKey) {
+      throw new Error("Supabase غير مضبوط من Netlify Environment Variables. تأكد من SUPABASE_URL و SUPABASE_ANON_KEY و SUPABASE_BUCKET.");
     }
 
-    const cloudName = (settings.cloudinaryCloudName || "").trim();
-    const uploadPreset = (settings.cloudinaryUploadPreset || "").trim();
-
-    if (!cloudName || !uploadPreset) {
-      throw new Error("بيانات Supabase غير محفوظة داخل الموقع. افتح الربط وأدخل SUPABASE_URL و SUPABASE_ANON_KEY و Bucket ثم اضغط حفظ.");
+    if (!file || !file.size) {
+      throw new Error("ملف الفيديو غير صالح أو فارغ.");
     }
 
-    const form = new FormData();
-    form.append("file", file);
-    form.append("upload_preset", uploadPreset);
-    form.append("folder", "marrsile-reels");
-
-    const endpoint = `https://api.cloudinary.com/v1_1/${encodeURIComponent(cloudName)}/video/upload`;
-    const res = await fetch(endpoint, { method: "POST", body: form });
-    const data = await res.json();
-
-    if (!res.ok || !data.secure_url) {
-      throw new Error(data.error?.message || "فشل رفع الفيديو إلى Cloudinary");
+    const maxMB = 250;
+    const sizeMB = file.size / 1024 / 1024;
+    if (sizeMB > maxMB) {
+      throw new Error(`حجم الفيديو ${sizeMB.toFixed(1)}MB كبير جداً. جرّب فيديو أقل من ${maxMB}MB للاختبار.`);
     }
 
+    const safeName = String(file.name || "video.mp4").replace(/[^a-zA-Z0-9._-]+/g, "_");
+    const ext = safeName.includes(".") ? safeName.split(".").pop() : "mp4";
+    const path = `marrsile-reels/${new Date().toISOString().slice(0,10)}/${Date.now()}_${Math.random().toString(16).slice(2)}.${ext}`;
+    const endpoint = `${supabaseUrl}/storage/v1/object/${encodeURIComponent(supabaseBucket)}/${path}`;
+
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${supabaseAnonKey}`,
+        "apikey": supabaseAnonKey,
+        "Content-Type": file.type || "video/mp4",
+        "x-upsert": "true"
+      },
+      body: file
+    });
+
+    const text = await res.text().catch(() => "");
+    let data = {};
+    try { data = text ? JSON.parse(text) : {}; } catch(e) { data = { raw: text }; }
+
+    if (!res.ok) {
+      const msg = data.error || data.message || data.raw || `HTTP ${res.status}`;
+      const readable = res.status === 403
+        ? "فشل رفع الفيديو إلى Supabase: 403 Forbidden. غالباً Policy الرفع INSERT للـ anon غير صحيحة."
+        : res.status === 401
+          ? "فشل رفع الفيديو إلى Supabase: 401 Unauthorized. المفتاح غير صحيح أو غير مقبول."
+          : res.status === 413
+            ? "فشل رفع الفيديو إلى Supabase: الفيديو كبير جداً."
+            : "فشل رفع الفيديو إلى Supabase: " + msg;
+      const err = new Error(readable);
+      recordError("Supabase Upload Failed", err, { status: res.status, endpoint, file: `${file.name} (${sizeMB.toFixed(2)}MB)`, details: data });
+      throw err;
+    }
+
+    const publicUrl = `${supabaseUrl}/storage/v1/object/public/${encodeURIComponent(supabaseBucket)}/${path}`;
     return {
-      url: data.secure_url,
-      publicUrl: data.secure_url,
-      cloudinaryPublicId: data.public_id || "",
+      url: publicUrl,
+      publicUrl,
+      cloudinaryPublicId: path,
+      supabasePath: path,
+      uploadedToSupabase: true,
       localOnly: false
     };
   }
@@ -565,25 +639,6 @@ async function publishUploadedVideoNow(index){
     localStorage.setItem("marrsile_v105_settings", JSON.stringify(settings));
   }
 
-  async function ensureSupabaseConfig() {
-    // v36: read Supabase settings from Netlify Environment Variables through a serverless function.
-    // Netlify env vars are not automatically available inside static browser JavaScript.
-    if (settings.supabaseUrl && settings.supabaseAnonKey && settings.supabaseBucket) return settings;
-    try {
-      const res = await fetch('/.netlify/functions/public-config', { cache: 'no-store' });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data && data.ok) {
-        if (data.supabaseUrl) settings.supabaseUrl = String(data.supabaseUrl).trim();
-        if (data.supabaseAnonKey) settings.supabaseAnonKey = String(data.supabaseAnonKey).trim();
-        if (data.supabaseBucket) settings.supabaseBucket = String(data.supabaseBucket).trim() || 'reels';
-        saveSettings();
-      }
-    } catch (err) {
-      console.warn('public-config failed', err);
-    }
-    return settings;
-  }
-
   function setupPublishNowDelegation() {
     document.addEventListener("click", (e) => {
       const btn = e.target && e.target.closest ? e.target.closest("[data-publish-now]") : null;
@@ -597,7 +652,7 @@ async function publishUploadedVideoNow(index){
   function bind() {
     $("loginBtn").addEventListener("click", login);
     $("uploadBtn").addEventListener("click", pickVideos);
-    $("uploadBtn2").addEventListener("click", pickVideos);
+    if ($("uploadBtn2")) $("uploadBtn2").addEventListener("click", pickVideos);
     $("videoInput").addEventListener("change", addVideos);
     $("dropZone").addEventListener("click", pickVideos);
     $("dropZone").addEventListener("dragover", (e) => { e.preventDefault(); $("dropZone").classList.add("drag"); });
@@ -645,12 +700,34 @@ async function publishUploadedVideoNow(index){
     $("factoryBtn").addEventListener("click", renderHookFactory);
     $("startAutoBtn").addEventListener("click", startAutopilot);
     $("queueRunBtn").addEventListener("click", startAutopilot);
-    $("saveBackendBtn").addEventListener("click", () => {
-      settings.backendUrl = $("backendUrl").value.trim();
-      saveSettings();
-      persistAll();
-      alert("تم حفظ رابط Backend محلياً");
-    });
+    if ($("saveBackendBtn")) {
+      $("saveBackendBtn").addEventListener("click", () => {
+        settings.backendUrl = $("backendUrl").value.trim();
+        saveSettings();
+        persistAll();
+        alert("تم حفظ رابط Backend محلياً");
+      });
+    }
+    if ($("checkSystemBtn")) {
+      $("checkSystemBtn").addEventListener("click", async () => {
+        try { await loadPublicConfig(true); alert("الربط صحيح ✅"); }
+        catch (err) { alert("فشل الفحص: " + (err.message || err)); openTab("errors"); }
+      });
+    }
+    if ($("copyErrorsBtn")) {
+      $("copyErrorsBtn").addEventListener("click", async () => {
+        const txt = $("errorLog") ? $("errorLog").textContent : "";
+        try { await navigator.clipboard.writeText(txt); alert("تم نسخ سجل الأخطاء"); }
+        catch(e) { alert("انسخ السجل يدوياً من المربع"); }
+      });
+    }
+    if ($("clearErrorsBtn")) {
+      $("clearErrorsBtn").addEventListener("click", () => {
+        diagnosticErrors = [];
+        try { localStorage.removeItem("marrsile_error_log_v37"); } catch(e) {}
+        renderErrorLog();
+      });
+    }
     if ($("saveStorageBtn")) {
       $("saveStorageBtn").addEventListener("click", () => {
         settings.cloudinaryCloudName = $("cloudinaryCloudName").value.trim();
@@ -709,7 +786,8 @@ async function publishUploadedVideoNow(index){
       accounts: "الحسابات",
       hooks: "مصنع الهوكات",
       queue: "Autopilot Queue",
-      settings: "الربط"
+      settings: "النظام",
+      errors: "الأخطاء"
     };
     $("pageTitle").textContent = titles[tabId] || "Marrsile";
     if (tabId === "videos") loadEditor();
@@ -754,8 +832,9 @@ async function publishUploadedVideoNow(index){
         });
         persistAll();
       } catch (err) {
-        console.error(err);
-        alert("فشل رفع " + file.name + ": " + (err.message || err));
+        recordError("فشل رفع الفيديو من الواجهة", err, { file: file.name });
+        alert("فشل رفع " + file.name + ": " + (err.message || err) + "\n\nتم تسجيل الخطأ في قسم الأخطاء.");
+        openTab("errors");
       }
     }
 
@@ -1635,7 +1714,10 @@ persistAll();
   document.addEventListener("DOMContentLoaded", () => {
     bind();
     setupPublishNowDelegation();
+    loadErrorLog();
+    renderErrorLog();
     hydrateAll();
+    loadPublicConfig().catch(() => {});
     loadQueueFromServer();
     loadSettingsToUI();
     renderAll();
@@ -1647,185 +1729,14 @@ persistAll();
 })();
 
 
-/* ===== v25 Cloudinary Upload Fix ===== */
-async function uploadVideoToSupabase(file){
-  if (typeof ensureSupabaseConfig === "function") await ensureSupabaseConfig();
-  const projectUrl = (settings && settings.supabaseUrl || localStorage.getItem("supabaseUrl") || "").trim().replace(/\/$/, "");
-  const anonKey = (settings && settings.supabaseAnonKey || localStorage.getItem("supabaseAnonKey") || "").trim();
-  const bucket = (settings && settings.supabaseBucket || localStorage.getItem("supabaseBucket") || "reels").trim() || "reels";
 
-  if(!projectUrl || !anonKey){
-    throw new Error("Supabase غير مضبوط. ضع Project URL و anon public key و Bucket ثم اضغط حفظ.");
-  }
-
-  const safeName = String(file.name || "video.mp4").replace(/[^a-zA-Z0-9._-]+/g, "_");
-  const path = `marrsile-reels/${Date.now()}_${Math.random().toString(16).slice(2)}_${safeName}`;
-  const uploadUrl = `${projectUrl}/storage/v1/object/${encodeURIComponent(bucket)}/${path}`;
-
-  const res = await fetch(uploadUrl, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${anonKey}`,
-      "apikey": anonKey,
-      "Content-Type": file.type || "video/mp4",
-      "x-upsert": "false"
-    },
-    body: file
-  });
-
-  const data = await res.json().catch(()=>({}));
-  if(!res.ok){
-    throw new Error("Supabase upload failed: " + (data.error || data.message || JSON.stringify(data)));
-  }
-
-  const publicUrl = `${projectUrl}/storage/v1/object/public/${encodeURIComponent(bucket)}/${path}`;
-  return { publicUrl, supabasePath: path, bucket, bytes: file.size, format: (file.name.split('.').pop() || '').toLowerCase() };
-}
-
-async function uploadVideoToCloudinary(file){
-  // v34: Supabase Storage هو الخيار الأساسي الأرخص. أبقينا اسم الدالة حتى لا نكسر كود النسخ السابقة.
-  const useSupabase = (settings && (settings.supabaseUrl || settings.supabaseAnonKey));
-  if(useSupabase){
-    const uploaded = await uploadVideoToSupabase(file);
-    return {
-      cloudinaryUrl: uploaded.publicUrl,
-      supabaseUrl: uploaded.publicUrl,
-      publicUrl: uploaded.publicUrl,
-      publicId: uploaded.supabasePath,
-      supabasePath: uploaded.supabasePath,
-      bucket: uploaded.bucket,
-      bytes: uploaded.bytes,
-      format: uploaded.format,
-      resourceType: "video"
-    };
-  }
-
-  const cloudName =
-    (settings && (settings.cloudinaryCloudName || settings.cloudName || settings.cloudinary_cloud_name)) ||
-    localStorage.getItem("cloudinaryCloudName") ||
-    localStorage.getItem("cloudName") ||
-    "";
-
-  const uploadPreset =
-    (settings && (settings.uploadPreset || settings.cloudinaryUploadPreset || settings.upload_preset)) ||
-    localStorage.getItem("uploadPreset") ||
-    localStorage.getItem("cloudinaryUploadPreset") ||
-    "";
-
-  if(!cloudName || !uploadPreset){
-    throw new Error("Supabase غير مضبوط، وCloudinary غير مضبوط أيضاً. ضع بيانات Supabase Storage في الإعدادات.");
-  }
-
-  const form = new FormData();
-  form.append("file", file);
-  form.append("upload_preset", uploadPreset);
-  form.append("folder", "virall-gcc-reels");
-
-  const endpoint = `https://api.cloudinary.com/v1_1/${cloudName}/video/upload`;
-  const res = await fetch(endpoint, { method: "POST", body: form });
-  const data = await res.json();
-  if(!res.ok || !data.secure_url){ throw new Error("Cloudinary upload failed: " + JSON.stringify(data)); }
-
-  return { cloudinaryUrl: data.secure_url, publicUrl: data.secure_url, publicId: data.public_id, duration: data.duration, bytes: data.bytes, format: data.format, resourceType: data.resource_type };
-}
-async function handleVideoFileWithCloudinary(file){
-  const localUrl = URL.createObjectURL(file);
-
-  const tempVideo = {
-    id: "v_" + Date.now() + "_" + Math.random().toString(16).slice(2),
-    name: file.name,
-    size: file.size,
-    type: file.type,
-    url: localUrl,
-    localUrl,
-    cloudinaryUrl: "",
-    supabaseUrl: "",
-    publicUrl: "",
-    uploadedToCloudinary: false,
-    uploadedToSupabase: false,
-    status: "uploading_to_supabase",
-    createdAt: new Date().toISOString()
-  };
-
-  videos.push(tempVideo);
-  saveAllData && saveAllData();
-  if(typeof renderAll === "function") renderAll();
-
-  try{
-    const uploaded = await uploadVideoToCloudinary(file);
-    tempVideo.url = uploaded.publicUrl || uploaded.cloudinaryUrl;
-    tempVideo.publicUrl = uploaded.publicUrl || uploaded.cloudinaryUrl;
-    tempVideo.supabaseUrl = uploaded.supabaseUrl || uploaded.publicUrl || "";
-    tempVideo.cloudinaryUrl = uploaded.cloudinaryUrl || uploaded.publicUrl;
-    tempVideo.publicId = uploaded.publicId;
-    tempVideo.supabasePath = uploaded.supabasePath || "";
-    tempVideo.duration = uploaded.duration;
-    tempVideo.bytes = uploaded.bytes;
-    tempVideo.format = uploaded.format;
-    tempVideo.resourceType = uploaded.resourceType;
-    tempVideo.uploadedToCloudinary = !!uploaded.cloudinaryUrl;
-    tempVideo.uploadedToSupabase = !!uploaded.supabaseUrl || !!uploaded.supabasePath;
-    tempVideo.status = "ready";
-    tempVideo.compatible = true;
-
-    saveAllData && saveAllData();
-    if(typeof renderAll === "function") renderAll();
-
-    alert("تم رفع الفيديو إلى Supabase Storage بنجاح وأصبح جاهزاً للنشر على Instagram");
-    return tempVideo;
-  }catch(err){
-    tempVideo.status = "storage_failed";
-    tempVideo.error = err.message || String(err);
-    saveAllData && saveAllData();
-    if(typeof renderAll === "function") renderAll();
-    alert("فشل رفع الفيديو إلى التخزين العام: " + tempVideo.error);
-    return tempVideo;
-  }
-}
-
-function installCloudinaryUploadInterceptor(){
-  document.addEventListener("change", async (e)=>{
-    const input = e.target;
-    if(!input || input.type !== "file") return;
-    if(!input.files || !input.files.length) return;
-
-    const files = Array.from(input.files).filter(f => String(f.type || "").startsWith("video/"));
-    if(!files.length) return;
-    e.preventDefault();
-    e.stopImmediatePropagation();
-
-    // Stop the old local-only upload path by clearing selected files after we take them.
-    for(const file of files){
-      await handleVideoFileWithCloudinary(file);
-    }
-
-    try{ input.value = ""; }catch(_){}
-  }, true);
-}
-
-if(!window.__cloudinaryUploadInterceptorInstalled){
-  window.__cloudinaryUploadInterceptorInstalled = true;
-  installCloudinaryUploadInterceptor();
-}
-/* ===== End v25 Cloudinary Upload Fix ===== */
+/* Removed outdated upload interceptor in v37 clean build. */
 
 
-/* ===== v25 Cloudinary UI status badges ===== */
-function injectCloudinaryStatusBadges(){
-  try{
-    document.querySelectorAll(".video-item").forEach((card,index)=>{
-      const video = videos[index];
-      if(!video || card.querySelector(".cloudinary-status")) return;
 
-      const badge = document.createElement("div");
-      badge.className = "cloudinary-status" + ((video.uploadedToSupabase || video.uploadedToCloudinary) ? "" : " failed");
-      badge.textContent = (video.uploadedToSupabase || video.uploadedToCloudinary) ? "Supabase مرفوع ✅" : ((video.status === "uploading_to_supabase" || video.status === "uploading_to_cloudinary") ? "جاري رفع Supabase..." : "غير مرفوع Supabase");
-      card.appendChild(badge);
-    });
-  }catch(err){}
-}
-setInterval(injectCloudinaryStatusBadges, 1200);
-/* ===== End v25 badges ===== */
+
+/* Removed outdated upload interceptor in v37 clean build. */
+
 
 
 /* ===== v26 Queue Delete Controls ===== */
