@@ -394,67 +394,59 @@ async function publishUploadedVideoNow(index){
   }
 
   async function uploadToCloudinary(file) {
-    // v37 clean: Supabase only. Configuration is loaded from Netlify Environment Variables.
+    // v38 clean: upload through a Netlify Function using Supabase Service Role.
+    // This bypasses browser RLS problems while keeping the secret key hidden on Netlify.
     await loadPublicConfig();
-
-    const supabaseUrl = (settings.supabaseUrl || "").trim().replace(/\/$/, "");
-    const supabaseAnonKey = (settings.supabaseAnonKey || "").trim();
-    const supabaseBucket = (settings.supabaseBucket || "reels").trim() || "reels";
-
-    if (!supabaseUrl || !supabaseAnonKey) {
-      throw new Error("Supabase غير مضبوط من Netlify Environment Variables. تأكد من SUPABASE_URL و SUPABASE_ANON_KEY و SUPABASE_BUCKET.");
-    }
 
     if (!file || !file.size) {
       throw new Error("ملف الفيديو غير صالح أو فارغ.");
     }
 
-    const maxMB = 250;
+    const maxMB = 80;
     const sizeMB = file.size / 1024 / 1024;
     if (sizeMB > maxMB) {
-      throw new Error(`حجم الفيديو ${sizeMB.toFixed(1)}MB كبير جداً. جرّب فيديو أقل من ${maxMB}MB للاختبار.`);
+      throw new Error(`حجم الفيديو ${sizeMB.toFixed(1)}MB كبير جداً لهذه النسخة. جرّب ضغطه أو استخدم فيديو أقل من ${maxMB}MB.`);
     }
 
-    const safeName = String(file.name || "video.mp4").replace(/[^a-zA-Z0-9._-]+/g, "_");
-    const ext = safeName.includes(".") ? safeName.split(".").pop() : "mp4";
-    const path = `marrsile-reels/${new Date().toISOString().slice(0,10)}/${Date.now()}_${Math.random().toString(16).slice(2)}.${ext}`;
-    const endpoint = `${supabaseUrl}/storage/v1/object/${encodeURIComponent(supabaseBucket)}/${path}`;
+    const toBase64 = (f) => new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("فشل قراءة ملف الفيديو من المتصفح."));
+      reader.onload = () => {
+        const result = String(reader.result || "");
+        const comma = result.indexOf(",");
+        resolve(comma >= 0 ? result.slice(comma + 1) : result);
+      };
+      reader.readAsDataURL(f);
+    });
 
+    const base64 = await toBase64(file);
+    const endpoint = "/.netlify/functions/upload-video";
     const res = await fetch(endpoint, {
       method: "POST",
-      headers: {
-        "Authorization": `Bearer ${supabaseAnonKey}`,
-        "apikey": supabaseAnonKey,
-        "Content-Type": file.type || "video/mp4",
-        "x-upsert": "true"
-      },
-      body: file
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        filename: file.name || "video.mp4",
+        contentType: file.type || "video/mp4",
+        base64
+      })
     });
 
     const text = await res.text().catch(() => "");
     let data = {};
     try { data = text ? JSON.parse(text) : {}; } catch(e) { data = { raw: text }; }
 
-    if (!res.ok) {
-      const msg = data.error || data.message || data.raw || `HTTP ${res.status}`;
-      const readable = res.status === 403
-        ? "فشل رفع الفيديو إلى Supabase: 403 Forbidden. غالباً Policy الرفع INSERT للـ anon غير صحيحة."
-        : res.status === 401
-          ? "فشل رفع الفيديو إلى Supabase: 401 Unauthorized. المفتاح غير صحيح أو غير مقبول."
-          : res.status === 413
-            ? "فشل رفع الفيديو إلى Supabase: الفيديو كبير جداً."
-            : "فشل رفع الفيديو إلى Supabase: " + msg;
-      const err = new Error(readable);
-      recordError("Supabase Upload Failed", err, { status: res.status, endpoint, file: `${file.name} (${sizeMB.toFixed(2)}MB)`, details: data });
+    if (!res.ok || !data.ok || !data.publicUrl) {
+      const msg = data.message || data.error || data.raw || `HTTP ${res.status}`;
+      const err = new Error("فشل رفع الفيديو عبر Netlify Function: " + msg);
+      recordError("Server Supabase Upload Failed", err, { status: res.status, endpoint, file: `${file.name} (${sizeMB.toFixed(2)}MB)`, details: data });
       throw err;
     }
 
-    const publicUrl = `${supabaseUrl}/storage/v1/object/public/${encodeURIComponent(supabaseBucket)}/${path}`;
     return {
-      url: publicUrl,
-      publicUrl,
-      cloudinaryPublicId: path,
-      supabasePath: path,
+      url: data.publicUrl,
+      publicUrl: data.publicUrl,
+      cloudinaryPublicId: data.path,
+      supabasePath: data.path,
       uploadedToSupabase: true,
       localOnly: false
     };
