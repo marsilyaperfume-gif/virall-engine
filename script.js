@@ -319,7 +319,8 @@ async function publishUploadedVideoNow(index){
   }
 
   async function uploadToCloudinary(file) {
-    // v35: Supabase Storage first. This function name is kept for backward compatibility.
+    // v36: Supabase Storage first. Config is loaded from Netlify function if the UI fields are empty.
+    await ensureSupabaseConfig();
     const supabaseUrl = (settings.supabaseUrl || "").trim().replace(/\/$/, "");
     const supabaseAnonKey = (settings.supabaseAnonKey || "").trim();
     const supabaseBucket = (settings.supabaseBucket || "reels").trim() || "reels";
@@ -562,6 +563,25 @@ async function publishUploadedVideoNow(index){
 
   function saveSettings() {
     localStorage.setItem("marrsile_v105_settings", JSON.stringify(settings));
+  }
+
+  async function ensureSupabaseConfig() {
+    // v36: read Supabase settings from Netlify Environment Variables through a serverless function.
+    // Netlify env vars are not automatically available inside static browser JavaScript.
+    if (settings.supabaseUrl && settings.supabaseAnonKey && settings.supabaseBucket) return settings;
+    try {
+      const res = await fetch('/.netlify/functions/public-config', { cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data && data.ok) {
+        if (data.supabaseUrl) settings.supabaseUrl = String(data.supabaseUrl).trim();
+        if (data.supabaseAnonKey) settings.supabaseAnonKey = String(data.supabaseAnonKey).trim();
+        if (data.supabaseBucket) settings.supabaseBucket = String(data.supabaseBucket).trim() || 'reels';
+        saveSettings();
+      }
+    } catch (err) {
+      console.warn('public-config failed', err);
+    }
+    return settings;
   }
 
   function setupPublishNowDelegation() {
@@ -1629,6 +1649,7 @@ persistAll();
 
 /* ===== v25 Cloudinary Upload Fix ===== */
 async function uploadVideoToSupabase(file){
+  if (typeof ensureSupabaseConfig === "function") await ensureSupabaseConfig();
   const projectUrl = (settings && settings.supabaseUrl || localStorage.getItem("supabaseUrl") || "").trim().replace(/\/$/, "");
   const anonKey = (settings && settings.supabaseAnonKey || localStorage.getItem("supabaseAnonKey") || "").trim();
   const bucket = (settings && settings.supabaseBucket || localStorage.getItem("supabaseBucket") || "reels").trim() || "reels";
