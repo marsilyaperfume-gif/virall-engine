@@ -319,16 +319,49 @@ async function publishUploadedVideoNow(index){
   }
 
   async function uploadToCloudinary(file) {
+    // v35: Supabase Storage first. This function name is kept for backward compatibility.
+    const supabaseUrl = (settings.supabaseUrl || "").trim().replace(/\/$/, "");
+    const supabaseAnonKey = (settings.supabaseAnonKey || "").trim();
+    const supabaseBucket = (settings.supabaseBucket || "reels").trim() || "reels";
+
+    if (supabaseUrl && supabaseAnonKey) {
+      const safeName = String(file.name || "video.mp4").replace(/[^a-zA-Z0-9._-]+/g, "_");
+      const path = `marrsile-reels/${Date.now()}_${Math.random().toString(16).slice(2)}_${safeName}`;
+      const endpoint = `${supabaseUrl}/storage/v1/object/${encodeURIComponent(supabaseBucket)}/${path}`;
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${supabaseAnonKey}`,
+          "apikey": supabaseAnonKey,
+          "Content-Type": file.type || "video/mp4",
+          "x-upsert": "true"
+        },
+        body: file
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        const msg = data.error || data.message || JSON.stringify(data) || `HTTP ${res.status}`;
+        throw new Error("فشل رفع الفيديو إلى Supabase: " + msg);
+      }
+
+      const publicUrl = `${supabaseUrl}/storage/v1/object/public/${encodeURIComponent(supabaseBucket)}/${path}`;
+      return {
+        url: publicUrl,
+        publicUrl,
+        cloudinaryPublicId: path,
+        supabasePath: path,
+        uploadedToSupabase: true,
+        localOnly: false
+      };
+    }
+
     const cloudName = (settings.cloudinaryCloudName || "").trim();
     const uploadPreset = (settings.cloudinaryUploadPreset || "").trim();
 
     if (!cloudName || !uploadPreset) {
-      return {
-        url: URL.createObjectURL(file),
-        publicUrl: "",
-        cloudinaryPublicId: "",
-        localOnly: true
-      };
+      throw new Error("بيانات Supabase غير محفوظة داخل الموقع. افتح الربط وأدخل SUPABASE_URL و SUPABASE_ANON_KEY و Bucket ثم اضغط حفظ.");
     }
 
     const form = new FormData();
@@ -691,9 +724,11 @@ async function publishUploadedVideoNow(index){
           cloudinaryPublicId: uploaded.cloudinaryPublicId,
           hook: makeHook(file.name),
           caption: makeCaption("عام الخليج"),
-          status: uploaded.localOnly ? "محلي فقط - اربط Cloudinary للنشر" : "جاهز للنشر",
+          status: uploaded.uploadedToSupabase ? "Supabase Upload ✅" : (uploaded.localOnly ? "محلي فقط - اربط التخزين" : "جاهز للنشر"),
           compatibility: "pending",
-          compatibilityLabel: uploaded.localOnly ? "محلي" : "مرفوع",
+          compatibilityLabel: uploaded.uploadedToSupabase ? "Supabase" : (uploaded.localOnly ? "محلي" : "مرفوع"),
+          supabasePath: uploaded.supabasePath || "",
+          uploadedToSupabase: !!uploaded.uploadedToSupabase,
           repairStatus: "not_needed",
           postedTo: []
         });
