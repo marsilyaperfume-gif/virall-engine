@@ -1789,20 +1789,34 @@ ${rand(ctaList)} — ${settings.captionFooter || "توصيل سريع · دفع 
     if (selected >= videos.length) selected = Math.max(0, videos.length - 1);
     const list = $("videoList");
     if (!list) return;
+    if ($("videoLibraryCount")) $("videoLibraryCount").textContent = availableVideos.length + " فيديو";
     list.innerHTML = availableVideos.length ? availableVideos.map((v) => {
       const index = videos.indexOf(v);
+      const statusText = escapeHtml(v.status || "جاهز");
+      const sourceText = v.uploadedToSupabase ? "Supabase" : "محلي";
+      const compatClass = v.compatibility === "compatible" ? "ok" : v.compatibility === "needs_repair" ? "warn" : v.compatibility === "fixed" ? "ok" : "bad";
       return `
-      <div class="video-item ${selected === index ? "active" : ""}" data-video-index="${index}">
-        <video src="${escapeHtml(publicVideoUrl(v) || v.url || "")}" muted playsinline preload="metadata"></video>
-        <div><b>${escapeHtml(v.name)}</b><span>${fmtBytes(v.size || 0)} · ${escapeHtml(v.status || "جاهز")}</span><small class="muted">Score ${Number(v.score || 50)} · ${v.uploadedToSupabase ? "Supabase" : "محلي"}</small></div>
-        <div class="video-actions">
+      <article class="video-card ${selected === index ? "active" : ""}" data-video-index="${index}">
+        <div class="video-thumb-wrap">
+          <video src="${escapeHtml(publicVideoUrl(v) || v.url || "")}" muted playsinline preload="metadata"></video>
+          <span class="video-badge">${sourceText}</span>
+        </div>
+        <div class="video-info">
+          <div class="video-title-row">
+            <b title="${escapeHtml(v.name)}">${escapeHtml(v.name)}</b>
+            <span class="compat ${compatClass}">${escapeHtml(v.compatibilityLabel || "قيد الفحص")}</span>
+          </div>
+          <p>${escapeHtml(v.hook || "بدون عنوان")}</p>
+          <div class="video-meta"><span>${fmtBytes(v.size || 0)}</span><span>${statusText}</span><span>Score ${Number(v.score || 50)}</span></div>
+          ${v.repairReason ? `<small class="muted repair-note">${escapeHtml(v.repairReason)}</small>` : ""}
+        </div>
+        <div class="video-actions compact-actions">
           <button data-publish-video="${index}" type="button">نشر الآن</button>
           <button data-schedule-video="${index}" type="button">جدولة</button>
-          <button data-delete-video="${index}" type="button">حذف</button>
+          <button data-delete-video="${index}" type="button" class="danger-mini">حذف</button>
         </div>
-        <span class="compat ${v.compatibility === "compatible" ? "ok" : v.compatibility === "needs_repair" ? "warn" : v.compatibility === "fixed" ? "ok" : "bad"}">${escapeHtml(v.compatibilityLabel || "قيد الفحص")}</span>${v.repairReason ? `<small class="muted">${escapeHtml(v.repairReason)}</small>` : ""}
-      </div>`;
-    }).join("") : `<div class="video-item">لا توجد فيديوهات غير منشورة. ارفع فيديوهات جديدة أو راجع قسم الفيديوهات المنشورة.</div>`;
+      </article>`;
+    }).join("") : `<div class="empty-state">لا توجد فيديوهات غير منشورة. ارفع فيديوهات جديدة أو راجع قسم الفيديوهات المنشورة.</div>`;
 
     document.querySelectorAll("[data-video-index]").forEach(item => {
       item.addEventListener("click", (e) => {

@@ -277,11 +277,12 @@
         </div>
       </div>
 
-      <div class="split">
-        <div class="card">
-          <div id="videoList" class="video-list"></div>
+      <div class="video-workspace">
+        <div class="card video-library-card">
+          <div class="library-head"><div><h3>مكتبة الفيديوهات</h3><p>عرض مرن ومتوافق مع الشاشة، اختر أي فيديو لتعديل الكابشن أو نشره.</p></div><span id="videoLibraryCount" class="pill-soft">0 فيديو</span></div>
+          <div id="videoList" class="video-list video-library-list"></div>
         </div>
-        <div class="card editor">
+        <div class="card editor smart-editor">
           <video id="editorVideo" controls playsinline></video>
           <label>عنوان/هوك الكابشن</label>
           <textarea id="videoHook" placeholder="هذا النص يستخدم داخل الكابشن فقط، لا يُكتب فوق الفيديو"></textarea>
