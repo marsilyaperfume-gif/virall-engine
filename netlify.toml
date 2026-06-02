@@ -6,4 +6,7 @@
   node_bundler = "esbuild"
 
 [functions."scheduled-publisher"]
-  schedule = "*/5 * * * *"
+  schedule = "*/1 * * * *"
+
+[functions."cron-scheduler"]
+  schedule = "*/1 * * * *"
