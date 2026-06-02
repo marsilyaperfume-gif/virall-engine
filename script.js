@@ -1123,6 +1123,18 @@ let __serverStateSyncTimerScoped = null;
 
 
   const gulfHooks = [
+    "قبل تطلب أي عطر… شوف هذا أولاً 👀",
+    "هذا العطر يخلي السؤال يتكرر: وش اسم عطرك؟",
+    "ريحة فخمة بسعر يخليك تطلب أكثر من واحد",
+    "لو تحب الحضور الهادئ… هذا اختيارك",
+    "العطر اللي يعطيك فخامة بدون مبالغة",
+    "أكثر عطر انطلب كهدية هذا الأسبوع",
+    "ريحة تسبقك للمكان بدون إزعاج",
+    "لا تدفع كثير عشان ريحتك تكون فخمة",
+    "هذا العطر مناسب للدوام والطلعات والهدايا",
+    "إذا تبي عطر يثبت وينسأل عنه… ركّز",
+    "عرض اليوم يستاهل التجربة قبل ما تخلص الكمية",
+    "العطر اللي يخليك جاهز لأي مناسبة",
     "إذا سألوك وش حاط… لا تستغرب 😮‍💨",
     "ريحة تخلي الكل يلتفت لك 🔥",
     "مو طبيعي هالسعر على هالفخامة",
@@ -1249,6 +1261,24 @@ let __serverStateSyncTimerScoped = null;
       e.stopPropagation();
       publishNowFromQueue(Number(btn.dataset.publishNow));
     });
+
+    document.addEventListener("click", async (e) => {
+      const copyBtn = e.target && e.target.closest ? e.target.closest("[data-copy-caption]") : null;
+      if (copyBtn) {
+        const txt = decodeURIComponent(copyBtn.dataset.copyCaption || "");
+        try { await navigator.clipboard.writeText(txt); copyBtn.textContent = "تم النسخ ✅"; setTimeout(() => copyBtn.textContent = "نسخ", 1200); }
+        catch(err) { alert("انسخ الكابشن يدوياً"); }
+        return;
+      }
+      const applyBtn = e.target && e.target.closest ? e.target.closest("[data-apply-caption]") : null;
+      if (applyBtn) {
+        const txt = decodeURIComponent(applyBtn.dataset.applyCaption || "");
+        if (!videos.length) { alert("ارفع فيديوهات أولاً"); return; }
+        videos.forEach(v => { v.caption = txt; if (!v.hook) v.hook = txt.split("\n")[0].slice(0, 70); });
+        persistAll(); renderVideos(); loadEditor();
+        alert("تم تطبيق الكابشن على كل الفيديوهات غير المنشورة");
+      }
+    });
   }
 
   function bind() {
@@ -1302,6 +1332,12 @@ let __serverStateSyncTimerScoped = null;
     $("connectInstagramBtn").addEventListener("click", connectInstagramOfficial);
     $("refreshOfficialAccountsBtn").addEventListener("click", loadOfficialAccounts);
     $("factoryBtn").addEventListener("click", renderHookFactory);
+    if ($("copyCaptionBankBtn")) $("copyCaptionBankBtn").addEventListener("click", async () => {
+      const txt = Array.from(document.querySelectorAll(".caption-card-text")).map(x => x.textContent.trim()).filter(Boolean).join("\n\n--------------------\n\n");
+      if (!txt) { renderHookFactory(); return; }
+      try { await navigator.clipboard.writeText(txt); alert("تم نسخ بنك الكابشنات"); }
+      catch(e) { alert("انسخ الكابشنات يدوياً"); }
+    });
     $("startAutoBtn").addEventListener("click", startAutopilot);
     $("queueRunBtn").addEventListener("click", startAutopilot);
     if ($("saveBackendBtn")) {
@@ -1389,7 +1425,7 @@ let __serverStateSyncTimerScoped = null;
       videos: "الفيديوهات",
       published: "الفيديوهات المنشورة",
       accounts: "الحسابات",
-      hooks: "مصنع الهوكات",
+      hooks: "مصنع الكابشن",
       queue: "Autopilot Queue",
       settings: "النظام",
       errors: "الأخطاء"
@@ -1496,125 +1532,99 @@ let __serverStateSyncTimerScoped = null;
 
   function makeCaption(market, hookText = "", videoName = "") {
     const markets = {
-      "السعودية": { place: "بالسعودية", girls: "يا بنات السعودية", people: "يا أهل السعودية" },
-      "الإمارات": { place: "بالإمارات", girls: "يا بنات الإمارات", people: "يا أهل الإمارات" },
-      "قطر": { place: "بقطر", girls: "يا بنات قطر", people: "يا أهل قطر" },
-      "الكويت": { place: "بالكويت", girls: "يا بنات الكويت", people: "يا أهل الكويت" },
-      "عمان": { place: "بعُمان", girls: "يا بنات عُمان", people: "يا أهل عُمان" },
-      "البحرين": { place: "بالبحرين", girls: "يا بنات البحرين", people: "يا أهل البحرين" }
+      "السعودية": { people: "يا أهل السعودية", girls: "يا بنات السعودية" },
+      "الإمارات": { people: "يا أهل الإمارات", girls: "يا بنات الإمارات" },
+      "قطر": { people: "يا أهل قطر", girls: "يا بنات قطر" },
+      "الكويت": { people: "يا أهل الكويت", girls: "يا بنات الكويت" },
+      "عمان": { people: "يا أهل عُمان", girls: "يا بنات عُمان" },
+      "البحرين": { people: "يا أهل البحرين", girls: "يا بنات البحرين" }
     };
-    const m = markets[market] || { place: "بالخليج", girls: "يا بنات الخليج", people: "يا أهل الخليج" };
+    const m = markets[market] || { people: "يا أهل الخليج", girls: "يا بنات الخليج" };
     const hook = hookText || makeHook(videoName);
-    const namesFemale = ["رهف", "فاطمة", "نورة", "مها", "دانة", "سارة", "ريم", "العنود", "جواهر", "مريم", "لطيفة", "هند"];
-    const namesMale = ["محمد", "عبدالله", "خالد", "فيصل", "راشد", "سعود", "حمد", "ناصر", "تركي", "ماجد"];
-    const reactions = [
-      "أول ما دخلت المكان الكل سألها: وش العطر؟",
-      "قالت لي بعد أول طلعة: مستحيل أغيّره بعد اليوم",
-      "وصلها الطلب وجربته، وبعد ساعتين رجعت تطلب واحد هدية",
-      "كانت تدور على عطر فخم وسعره منطقي… وهذا كان الاختيار",
-      "أكثر تعليق جاها: ريحتك فخمة مرة",
-      "ما توقعت الثبات يكون كذا، خصوصاً على السعر"
+    const names = ["نورة", "فاطمة", "دانة", "ريم", "سارة", "هند", "عبدالله", "خالد", "فيصل", "حمد", "سعود", "ماجد"];
+    const proof = [
+      "أول ما جربته رجع يطلب واحد هدية",
+      "أكثر تعليق وصله كان: ريحتك فخمة مرة",
+      "ما توقع الثبات يكون كذا خصوصاً على السعر",
+      "بعد أول طلعة صار من العطور الأساسية عنده",
+      "قال: هذا النوع اللي الناس تنتبه له بدون ما أسأل",
+      "أعجبه لأنه فخم بدون ما يكون مزعج"
     ];
-    const sensory = [
-      "ريحة فخمة، نظيفة، وتبقى معك بدون إزعاج",
-      "ثبات واضح وحضور يخلي العطر ينلاحظ من أول دقيقة",
-      "فخامة هادئة تناسب الدوام، الطلعات، والمناسبات",
-      "يعطي إحساس مرتب وغالي حتى قبل ما تتكلم",
-      "عطر من النوع اللي يعلق بالذاكرة",
-      "الرشة الأولى تكفي تفهم ليش الناس تسأل عنه"
+    const benefits = [
+      "ريحة نظيفة وفخمة وتبقى معك ساعات",
+      "ثبات واضح وحضور مرتب من أول رشة",
+      "يناسب الدوام، الطلعات، والهدايا",
+      "يعطي إحساس مرتب وغالي قبل ما تتكلم",
+      "فخامة هادئة تناسب الذوق الخليجي",
+      "عطر من النوع اللي يعلق بالذاكرة"
     ];
     const questions = [
-      "تحب العطر يكون ناعم وفخم ولا قوي وملفت؟",
-      "مين مثلي يختار العطر قبل اللبس؟",
-      "لو أحد سألك عن عطرك، تقول اسمه ولا تخليه سر؟",
-      "أكثر شيء يهمك بالعطر: الثبات ولا الفخامة؟",
+      "أنت تحب العطر يكون ناعم وفخم ولا قوي وملفت؟",
+      "لو أحد سألك عن عطرك… تقول اسمه ولا تخليه سر؟",
+      "أهم شيء عندك بالعطر: الثبات ولا الفخامة؟",
       "جربت عطر يخلي الناس توقفك وتسألك عنه؟"
     ];
-    const viralHooks = [
-      hook,
-      "لا تشتري عطر جديد قبل ما تشوف هذا 👀",
-      "هذا العطر عليه كلام كثير بالخليج 😮‍💨",
-      "لو تحب الروائح الفخمة… ركّز هنا",
-      "الريحة اللي تخلي حضورك واضح بدون مبالغة",
-      "سعره شيء… وريحته شيء ثاني تماماً",
-      "هذا مو إعلان عطر، هذه تجربة لازم تعرفها",
-      "إذا سألوك وش حاط… لا تقول ما حذرتك 😭",
-      "هذا من العطور اللي تخلّي الناس تسأل بدون ما تنتبه",
-      "ريحة نظيفة وفخمة وتناسب كل طلعة",
-      "لو تبغى عطر يبان راقي بدون مبالغة، هذا خيار قوي",
-      "من أول رشة يعطيك إحساس مرتب وغالي",
-      "النوع اللي يخليك تثبته ضمن مجموعتك",
-      "عطر يخلي اللوك كامل حتى قبل ما تطلع",
-      "الفخامة هنا مو بس بالريحة… حتى بالسعر"
+    const urgency = [
+      "الكمية محدودة والطلب يزيد يومياً",
+      "العرض الحالي يخلي التجربة أذكى بكثير",
+      "السعر الحالي مناسب قبل ما تتغير العروض",
+      "لا تنتظر لين تخلص الكمية الأكثر طلباً",
+      "اختيار ذكي لو تبي فخامة بسعر منطقي"
     ];
     const ctas = {
-      bio: ["شوف التشكيلة من الرابط في البايو", "الرابط في البايو لو تبغى تشوف السعر", "اطلبه من الرابط في البايو قبل ما تخلص الكمية"],
-      whatsapp: ["راسلنا واتساب ونرشح لك الأنسب", "اكتب لنا واتساب ونساعدك تختار", "لو محتار، واتساب ونختار لك حسب ذوقك"],
-      limited: ["الكمية محدودة والطلب يزيد يومياً", "لا تنتظر لين تخلص الكمية", "المتوفر محدود خصوصاً على العطور الأكثر طلباً"],
+      bio: ["شوف التشكيلة من الرابط في البايو", "الرابط في البايو لو تبغى السعر", "اطلبه من الرابط في البايو قبل نفاد الكمية"],
+      whatsapp: ["راسلنا واتساب ونرشح لك الأنسب", "لو محتار، واتساب ونختار لك حسب ذوقك", "اكتب لنا واتساب ونساعدك تختار"],
+      limited: ["لا تنتظر لين تخلص الكمية", "المتوفر محدود على الأكثر طلباً", "اطلب قبل ما ينتهي عرض اليوم"],
       shopNow: ["اطلب الآن وخلي عطرك القادم مختلف", "شوف العروض الحالية وقرر", "اختار عطرك اليوم وخلك جاهز للطلعات"]
     };
     const ctaList = ctas[settings.ctaMode] || ctas.bio;
-    const offerLine = {
-      discount: "العرض الحالي يخلي التجربة أذكى بكثير.",
-      freeShipping: "والأجمل إن التوصيل أسهل مما تتوقع.",
-      cod: "والدفع عند الاستلام يخلي الطلب مريح أكثر.",
-      bundle: "خذ أكثر من عطر وخلّ كل مناسبة لها ريحتها.",
-      premium: "فخامة واضحة بسعر يناسب الذوق الذكي."
-    }[settings.offerType] || "فخامة وسعر منافس.";
+    const templates = [
+      () => `${hook}
 
-    const story = () => {
-      const name = Math.random() > 0.45 ? rand(namesFemale) : rand(namesMale);
-      return `${rand(viralHooks)}
+${m.people}… هذا عطر يعطيك حضور واضح بدون مبالغة.
 
-${name} طلب/ت العطر كتجربة… وما توقع/ت إن ${rand(reactions)} 😭✨
+${rand(benefits)}.
 
-${rand(sensory)}.
+${rand(urgency)}.
 
-${offerLine}
+${rand(ctaList)} 🔥`,
+      () => `${hook}
 
-${rand(ctaList)} 🤍`;
-    };
-    const question = () => `${rand(viralHooks)}
+${rand(names)} جرّبه وما توقع إن ${rand(proof)} 😭✨
+
+${rand(benefits)}.
+
+${rand(ctaList)} 🤍`,
+      () => `${hook}
 
 ${rand(questions)}
 
-لأن هذا العطر تحديداً يعطيك ${rand(sensory)}.
+لو جوابك فخامة وثبات، فهذا العطر يستاهل يكون ضمن اختياراتك.
 
-${offerLine}
+${rand(urgency)}.
 
-${rand(ctaList)} ✨`;
-    const direct = () => `${rand(viralHooks)}
+${rand(ctaList)} ✨`,
+      () => `${hook}
 
-${m.people}… إذا تبغى عطر يرفع حضورك بدون ما يكون مزعج، هذا خيار يستاهل التجربة.
+${m.girls}، إذا تبغين ريحة مرتبة وتنسأل عنها كثير… هذا خيار قوي.
 
-${rand(sensory)}.
+${rand(benefits)}.
 
-${rand(ctaList)} 🔥`;
-    const girls = () => `${rand(viralHooks)}
+${rand(ctaList)} 🤍`,
+      () => `${hook}
 
-${m.girls}، هذا من العطور اللي تخلي السؤال يتكرر: وش اسم عطرك؟ 😭
+مو كل عطر يحتاج يكون غالي عشان يعطي انطباع فاخر.
 
-فخم، مرتب، ويناسب الهدية والاستخدام اليومي.
+${rand(benefits)}.
 
-${rand(ctaList)} 🤍`;
-    const shortHook = () => `${rand(viralHooks)}
+${rand(urgency)}.
 
-${rand(sensory)}.
-
-${offerLine}
-
-${rand(ctaList)}.`;
-    const luxury = () => `${rand(viralHooks)}
-
-لو ذوقك يميل للفخامة النظيفة، هذا العطر يعطيك حضور مرتب بدون إزعاج.
-
-${rand(sensory)}.
-
-${rand(ctaList)} — ${settings.captionFooter || "توصيل سريع · دفع عند الاستلام"}`;
-    const templates = [story, story, question, direct, girls, shortHook, luxury, luxury];
+${rand(ctaList)} 🛒`
+    ];
     const base = rand(templates)();
     return clean([base, settings.captionFooter ? "\n\n" + settings.captionFooter : "", settings.hashtags ? "\n\n" + settings.hashtags : ""]);
   }
+
 
   function readSettingsFromUI() {
     ["hookType","hookPower","emojiMode","hookLength","hookStyle","offerType","ctaMode","hashtags","captionFooter","delayMode"].forEach(id => { if($(id)) settings[id] = $(id).value; });
@@ -2265,27 +2275,67 @@ persistAll();
     return map[status] || status || "مجدول";
   }
 
+  function findVideoForQueueItem(q) {
+    if (!q) return null;
+    const vid = String(q.videoId || q.video || "");
+    return (videos || []).find(v =>
+      String(v.id || "") === String(q.videoId || "") ||
+      String(v.name || "") === String(q.video || "") ||
+      String(normalizeVideoKey(v)) === vid
+    ) || null;
+  }
+
   function renderQueue() {
     const header = `
-      <div class="queue-toolbar">
+      <div class="queue-toolbar smart-queue-toolbar">
         <button class="secondary" id="refreshQueueBtn" type="button">تحديث حالة الجدولة</button>
         <button class="secondary" id="schedulerStatusBtn" type="button">فحص محرك 24/7</button>
         <button class="primary" id="runSchedulerNowBtn" type="button">تشغيل الجدولة الآن</button>
         <button class="danger" id="clearQueueBtn" type="button">حذف كل الجدولة</button>
       </div>`;
-    $("queueList").innerHTML = header + (queue.length ? queue.map((q, i) => `
-      <div class="queue-item status-${escapeHtml(q.status || "scheduled")}">
-        <b>${escapeHtml(q.video || q.title || "فيديو")}</b>
-        <span class="muted">${escapeHtml(q.account || "")} · ${escapeHtml(q.market || "")} · ${escapeHtml(q.time || "")} · ${q.scheduledAt ? escapeHtml(new Date(q.scheduledAt).toLocaleDateString("ar")) : ""}</span>
-        <p><strong>${escapeHtml(q.hook || "")}</strong></p>
-        <p class="muted">${escapeHtml((q.caption || "").slice(0, 180))}${(q.caption || "").length > 180 ? "…" : ""}</p>
-        <span class="warn">${escapeHtml(queueStatusLabel(q.status))}${q.error ? " — " + escapeHtml(String(q.error).slice(0, 120)) : ""}</span>
-        <div class="queue-controls">
-          <button class="publish-now-btn" data-publish-now="${i}" type="button" ${q.status === "published" ? "disabled" : ""}>نشر الآن</button>
-          <button class="delete-queue-btn" data-delete-queue="${i}" type="button">حذف من الجدولة</button>
+
+    const items = queue.length ? queue.map((q, i) => {
+      const v = findVideoForQueueItem(q);
+      const src = q.videoUrl || publicVideoUrl(v) || "";
+      const name = q.video || (v && v.name) || q.title || "فيديو";
+      const size = v && v.size ? fmtBytes(v.size) : "";
+      const score = v ? Number(v.score || 50) : Number(q.score || 50);
+      const dateText = q.scheduledAt ? new Date(q.scheduledAt).toLocaleString("ar", { dateStyle: "short", timeStyle: "short" }) : (q.time || "");
+      return `
+      <article class="queue-card status-${escapeHtml(q.status || "scheduled")}">
+        <div class="queue-video-thumb">
+          ${src ? `<video src="${escapeHtml(src)}" muted playsinline preload="metadata"></video>` : `<div class="queue-thumb-placeholder">MP4</div>`}
+          <span class="video-badge">Queue</span>
         </div>
-      </div>
-    `).join("") : `<div class="queue-item">شغّل Autopilot ليبني الجدول تلقائياً.</div>`);
+
+        <div class="queue-card-body">
+          <div class="queue-card-head">
+            <div>
+              <b title="${escapeHtml(name)}">${escapeHtml(name)}</b>
+              <span class="muted">${escapeHtml(q.account || "")}</span>
+            </div>
+            <span class="queue-time-pill">${escapeHtml(dateText)}</span>
+          </div>
+
+          <h4>${escapeHtml(q.hook || "بدون عنوان")}</h4>
+          <p>${escapeHtml((q.caption || "").slice(0, 210))}${(q.caption || "").length > 210 ? "…" : ""}</p>
+
+          <div class="queue-meta-row">
+            <span class="warn">${escapeHtml(queueStatusLabel(q.status))}${q.error ? " — " + escapeHtml(String(q.error).slice(0, 90)) : ""}</span>
+            ${size ? `<span>${escapeHtml(size)}</span>` : ""}
+            <span>Score ${score}</span>
+            ${q.slotIndex !== undefined ? `<span>Slot ${Number(q.slotIndex) + 1}</span>` : ""}
+          </div>
+        </div>
+
+        <div class="queue-card-actions">
+          <button class="publish-now-btn" data-publish-now="${i}" type="button" ${q.status === "published" ? "disabled" : ""}>نشر الآن</button>
+          <button class="delete-queue-btn danger-mini" data-delete-queue="${i}" type="button">حذف</button>
+        </div>
+      </article>`;
+    }).join("") : `<div class="empty-state">شغّل Autopilot ليبني الجدول تلقائياً.</div>`;
+
+    $("queueList").innerHTML = header + `<div class="queue-smart-list">${items}</div>`;
 
     const refreshBtn = $("refreshQueueBtn");
     if (refreshBtn) refreshBtn.addEventListener("click", refreshQueueStatus);
@@ -2304,9 +2354,30 @@ persistAll();
   }
 
   function renderHookFactory() {
-    const hooksHtml = gulfHooks.map(h => `<div class="hook-item"><b>هوك</b><span>${escapeHtml(h)}</span></div>`).join("");
-    const captionsHtml = captionOpeners.concat(captionCTAs).map(h => `<div class="hook-item caption-bank"><b>كابشن</b><span>${escapeHtml(h)}</span></div>`).join("");
-    $("hookFactory").innerHTML = hooksHtml + captionsHtml;
+    const markets = ["عام الخليج", "الإمارات", "السعودية", "قطر", "عمان", "الكويت"];
+    const angles = [
+      "سؤال تفاعلي", "إثبات اجتماعي", "عرض محدود", "هدية فاخرة", "ثبات وفخامة", "قبل وبعد",
+      "خوف من نفاد الكمية", "سعر ذكي", "اختيار للدوام", "طلعة ومناسبة", "ريحة تسأل عنها الناس", "قرار سريع"
+    ];
+    const cards = Array.from({length: 18}, (_, i) => {
+      const market = markets[i % markets.length];
+      const caption = makeCaption(market, rand(gulfHooks));
+      const angle = angles[i % angles.length];
+      const encoded = encodeURIComponent(caption);
+      return `
+        <article class="caption-card">
+          <div class="caption-card-top">
+            <span class="caption-tag">${escapeHtml(angle)}</span>
+            <span class="caption-market">${escapeHtml(market)}</span>
+          </div>
+          <pre class="caption-card-text">${escapeHtml(caption)}</pre>
+          <div class="caption-card-actions">
+            <button class="secondary" type="button" data-copy-caption="${encoded}">نسخ</button>
+            <button class="primary" type="button" data-apply-caption="${encoded}">تطبيق على الفيديوهات</button>
+          </div>
+        </article>`;
+    }).join("");
+    $("hookFactory").innerHTML = cards;
   }
 
 
