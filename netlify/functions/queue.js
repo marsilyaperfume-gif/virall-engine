@@ -25,14 +25,55 @@ async function writeQueue(queue) {
 
 function normalizeItem(item, index) {
   const now = new Date().toISOString();
+  const allowed = new Set([
+    "scheduled",
+    "publishing",
+    "waiting_publish",
+    "publish_check",
+    "published",
+    "failed",
+    "skipped"
+  ]);
+  const status = allowed.has(String(item.status || "")) ? String(item.status) : "scheduled";
   return {
     ...item,
     id: item.id || `${item.accountId || item.account || "acc"}_${item.videoId || item.video || "video"}_${item.scheduledAt || item.time || index}_${Date.now()}`,
-    status: item.status === "published" ? "published" : (item.status === "failed" ? "failed" : "scheduled"),
+    status,
     attempts: Number(item.attempts || 0),
     createdAt: item.createdAt || now,
     updatedAt: now
   };
+}
+
+function itemDay(item) {
+  const d = new Date(item.scheduledAt || item.publishedAt || item.createdAt || 0);
+  return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+}
+
+function itemAccountKey(item) {
+  return String(item && (item.accountId || item.account || item.username || item.user) || "");
+}
+
+function itemVideoKey(item) {
+  return String(item && (item.videoId || item.video || item.name) || "");
+}
+
+function dedupeQueue(queue) {
+  const seen = new Set();
+  const out = [];
+  const priority = { publishing: 6, waiting_publish: 5, publish_check: 4, published: 3, scheduled: 2, failed: 1, skipped: 0 };
+  [...queue].sort((a, b) => {
+    const base = new Date(a.scheduledAt || a.publishedAt || 0) - new Date(b.scheduledAt || b.publishedAt || 0);
+    if (base) return base;
+    return (priority[b.status] || 0) - (priority[a.status] || 0);
+  }).forEach(item => {
+    if (!item || item.status === "deleted") return;
+    const key = [itemAccountKey(item), itemVideoKey(item), itemDay(item)].join("::");
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(item);
+  });
+  return out;
 }
 
 exports.handler = async function(event) {
@@ -47,7 +88,7 @@ exports.handler = async function(event) {
     if (event.httpMethod === "POST") {
       const body = JSON.parse(event.body || "{}");
       const incoming = Array.isArray(body.queue) ? body.queue : [];
-      const queue = incoming.map(normalizeItem);
+      const queue = dedupeQueue(incoming.map(normalizeItem));
       await writeQueue(queue);
       return { statusCode: 200, headers: corsHeaders, body: JSON.stringify({ ok: true, count: queue.length, queue }) };
     }

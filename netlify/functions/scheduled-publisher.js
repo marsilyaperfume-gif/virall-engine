@@ -30,6 +30,190 @@ async function writeSchedulerLog(entry) {
   await store.setJSON("logs", current.slice(0, 300));
 }
 
+
+async function readAppState() {
+  const store = blobStore("app_state");
+  return (await store.get("state", { type: "json" })) || { settings: {}, videos: [], accounts: [], autopilot: false };
+}
+
+function videoUrl(v) {
+  return (v && (v.publicUrl || v.url || v.supabaseUrl)) || "";
+}
+
+function accountKey(a) {
+  return String(a && (a.id || a.name || a.user || a.username) || "");
+}
+
+function videoKey(v) {
+  return String(v && (v.id || v.name) || "");
+}
+
+function itemAccountKey(item) {
+  return String(item && (item.accountId || item.account || item.username || item.user) || "");
+}
+
+function itemVideoKey(item) {
+  return String(item && (item.videoId || item.video || item.name) || "");
+}
+
+function itemDay(item) {
+  const d = new Date(item.scheduledAt || item.publishedAt || item.createdAt || 0);
+  return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+}
+
+function scoreVideo(v) {
+  return Number(v.score || v.performanceScore || (v.topPerformer ? 85 : 50));
+}
+
+function makeCaption(market, v, settings) {
+  const footer = settings.captionFooter || "";
+  const tags = settings.hashtags || "";
+  const hooks = [
+    "ريحة تخلي الكل يسألك وش حاط",
+    "فخامة واضحة من أول رشة",
+    "عطر يعطيك حضور بدون مبالغة",
+    "لو تحب العطور الفخمة ركز هنا",
+    "اختيار ذكي لمحبي الثبات والفخامة"
+  ];
+  const hook = v.hook || hooks[Math.floor(Math.random() * hooks.length)];
+  return [hook, market ? `مناسب لـ ${market}` : "", footer, tags].filter(Boolean).join("\n\n");
+}
+
+function scheduledDate(timeStr, dayOffset, accountIndex, slotIndex) {
+  const [hh, mm] = String(timeStr || "08:00").split(":").map(n => Number(n || 0));
+  const d = new Date();
+  d.setDate(d.getDate() + Number(dayOffset || 0));
+  d.setHours(hh || 0, mm || 0, 0, 0);
+  // deterministic spread: لا تنشر كل الحسابات بنفس الدقيقة
+  d.setMinutes(d.getMinutes() + ((accountIndex * 11 + slotIndex * 7) % 37));
+  if (d.getTime() < Date.now() + 2 * 60 * 1000) d.setDate(d.getDate() + 1);
+  return d;
+}
+
+function hasDuplicate(queue, accKey, vidKey, date) {
+  const day = date.toISOString().slice(0, 10);
+  return queue.some(q => {
+    if (!q || ["deleted", "failed", "skipped"].includes(q.status)) return false;
+    return itemAccountKey(q) === accKey && itemVideoKey(q) === vidKey && itemDay(q) === day;
+  });
+}
+
+function hasRecent(queue, accKey, vidKey, targetDate, cooldownDays, planned) {
+  const key = accKey + "::" + vidKey;
+  const target = targetDate.getTime();
+  const ms = cooldownDays * 86400000;
+  if ((planned.get(key) || []).some(d => Math.abs(target - d.getTime()) < ms)) return true;
+  return queue.some(q => {
+    if (!q || ["deleted", "failed", "skipped"].includes(q.status)) return false;
+    if (itemAccountKey(q) !== accKey || itemVideoKey(q) !== vidKey) return false;
+    const d = new Date(q.scheduledAt || q.publishedAt || q.createdAt || 0);
+    return !Number.isNaN(d.getTime()) && Math.abs(target - d.getTime()) < ms;
+  });
+}
+
+function hasUsedBeforeForAccount(queue, accKey, vidKey, planned) {
+  const key = accKey + "::" + vidKey;
+  if ((planned.get(key) || []).length) return true;
+  return queue.some(q => {
+    if (!q || ["deleted", "failed", "skipped"].includes(q.status)) return false;
+    return itemAccountKey(q) === accKey && itemVideoKey(q) === vidKey;
+  });
+}
+
+function markPlanned(planned, accKey, vidKey, date) {
+  const key = accKey + "::" + vidKey;
+  const arr = planned.get(key) || [];
+  arr.push(new Date(date));
+  planned.set(key, arr);
+}
+
+function chooseVideo(videos, queue, account, targetDate, usedToday, planned, settings, slotSeed) {
+  const accKey = accountKey(account);
+  const cooldown = Number(settings.repeatCooldownDays || 21);
+  const usable = videos.filter(v => videoUrl(v) && !String(videoUrl(v)).startsWith("blob:") && !usedToday.has(videoKey(v)));
+
+  // First pass: use every stored video once per account before recycling anything.
+  const neverUsed = usable.filter(v => !hasUsedBeforeForAccount(queue, accKey, videoKey(v), planned));
+  if (neverUsed.length) return neverUsed[slotSeed % neverUsed.length];
+
+  // Second pass: after stored videos are exhausted, recycle successful videos only.
+  const winners = usable.filter(v => {
+    const vk = videoKey(v);
+    const isWinner = v.success === true || v.topPerformer === true || scoreVideo(v) >= Number(settings.minimumRecycleScore || 70);
+    return isWinner && !hasRecent(queue, accKey, vk, targetDate, cooldown, planned);
+  });
+  if (winners.length) return winners.sort((a,b)=>scoreVideo(b)-scoreVideo(a))[slotSeed % winners.length];
+  return null;
+}
+
+function dedupeQueue(queue) {
+  const seen = new Set();
+  const out = [];
+  queue.sort((a,b)=>new Date(a.scheduledAt || a.publishedAt || 0)-new Date(b.scheduledAt || b.publishedAt || 0)).forEach(q => {
+    if (!q || q.status === "deleted") return;
+    const key = [itemAccountKey(q), itemVideoKey(q), itemDay(q), q.status || "scheduled"].join("::");
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(q);
+  });
+  return out;
+}
+
+async function refillRollingQueue(queue) {
+  const state = await readAppState().catch(() => null);
+  if (!state || !state.autopilot) return { added: 0, reason: "autopilot_off" };
+  const settings = state.settings || {};
+  const videos = Array.isArray(state.videos) ? state.videos : [];
+  const accounts = (Array.isArray(state.accounts) ? state.accounts : []).filter(a => a && a.id && a.official !== false);
+  if (!videos.length || !accounts.length) return { added: 0, reason: "missing_videos_or_accounts" };
+
+  const days = 3;
+  const daily = Math.max(1, Number(settings.daily || 3));
+  const times = Array.isArray(settings.times) && settings.times.length ? settings.times : ["08:00", "16:00", "00:00"];
+  const activeCount = queue.filter(q => q && !["published", "failed", "deleted", "skipped"].includes(q.status)).length;
+  const targetCount = days * daily * accounts.length;
+  if (activeCount >= targetCount) return { added: 0, activeCount, targetCount };
+
+  const before = queue.length;
+  const planned = new Map();
+  for (let day = 0; day < days; day++) {
+    accounts.forEach((acc, accountIndex) => {
+      const usedToday = new Set();
+      for (let slot = 0; slot < daily; slot++) {
+        const at = scheduledDate(times[slot % times.length], day, accountIndex, slot);
+        const v = chooseVideo(videos, queue, acc, at, usedToday, planned, settings, day * daily + slot + accountIndex);
+        if (!v) continue;
+        const accKey = accountKey(acc);
+        const vidKey = videoKey(v);
+        if (hasDuplicate(queue, accKey, vidKey, at) || usedToday.has(vidKey)) continue;
+        usedToday.add(vidKey); markPlanned(planned, accKey, vidKey, at);
+        const stamp = at.toISOString();
+        queue.push({
+          id: `${accKey}_${vidKey}_${stamp.slice(0,16)}`,
+          videoId: v.id,
+          video: v.name,
+          videoUrl: videoUrl(v),
+          accountId: acc.id,
+          account: acc.name || acc.user || acc.username,
+          market: acc.market || "عام الخليج",
+          time: at.toLocaleTimeString("ar", { hour: "2-digit", minute: "2-digit" }),
+          scheduledAt: stamp,
+          status: "scheduled",
+          hook: v.hook || "",
+          caption: makeCaption(acc.market || "عام الخليج", v, settings),
+          createdAt: new Date().toISOString(),
+          smart: true,
+          rolling: true,
+          recycleScore: scoreVideo(v)
+        });
+      }
+    });
+  }
+  const deduped = dedupeQueue(queue);
+  queue.splice(0, queue.length, ...deduped);
+  return { added: Math.max(0, queue.length - before), activeCount, targetCount, queueCount: queue.length };
+}
+
 function scheduledDate(item) {
   const raw = item && (item.nextAttemptAt || item.scheduledAt);
   const d = raw ? new Date(raw) : null;
@@ -45,6 +229,32 @@ function isDue(item, now) {
 
 function itemCaption(item) {
   return item.caption || item.hook || "";
+}
+
+async function markVideoSuccessfulInState(item) {
+  try {
+    const state = await readAppState();
+    const videos = Array.isArray(state.videos) ? state.videos : [];
+    const idx = videos.findIndex(v => String(v.id || v.name) === String(item.videoId || item.video));
+    if (idx >= 0) {
+      const current = videos[idx] || {};
+      const postedTo = Array.isArray(current.postedTo) ? current.postedTo.slice() : [];
+      const accName = item.account || item.accountId || "Instagram";
+      if (!postedTo.includes(accName)) postedTo.push(accName);
+      videos[idx] = {
+        ...current,
+        success: true,
+        topPerformer: current.topPerformer || false,
+        score: Math.max(Number(current.score || 50), 75),
+        postedTo,
+        lastPublishedAt: new Date().toISOString()
+      };
+      const store = blobStore("app_state");
+      await store.setJSON("state", { ...state, videos, savedAt: new Date().toISOString() });
+    }
+  } catch (e) {
+    await writeSchedulerLog({ source: "mark-state", ok: false, error: e.message || String(e), item: item.id }).catch(() => {});
+  }
 }
 
 async function coreRun(source = "scheduled", opts = {}) {
@@ -112,6 +322,7 @@ async function coreRun(source = "scheduled", opts = {}) {
           item.result = result;
           item.error = "";
           item.nextAttemptAt = "";
+          await markVideoSuccessfulInState(item);
           results.push({ id: item.id, ok: true, status: "published", video: item.video, account: item.account });
         }
       } catch (err) {
@@ -129,7 +340,10 @@ async function coreRun(source = "scheduled", opts = {}) {
       await writeQueue(queue);
     }
 
-    const out = { ok: true, source, now: now.toISOString(), queueCount: queue.length, dueCount, processed: results.length, maxItems, results, durationMs: Date.now() - startedAt };
+    const refill = await refillRollingQueue(queue).catch(err => ({ added: 0, error: err.message || String(err) }));
+    if (refill && refill.added) await writeQueue(queue);
+
+    const out = { ok: true, source, now: now.toISOString(), queueCount: queue.length, dueCount, processed: results.length, maxItems, results, refill, durationMs: Date.now() - startedAt };
     await writeSchedulerLog(out);
     return out;
   } catch (err) {

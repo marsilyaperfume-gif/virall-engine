@@ -145,9 +145,10 @@ async function v32AutoPublishScheduler(){
   }
 }
 
-setInterval(v32AutoPublishScheduler, 15000);
-window.addEventListener("focus", v32AutoPublishScheduler);
-document.addEventListener("visibilitychange", () => { if(!document.hidden) v32AutoPublishScheduler(); });
+/* v52: disabled old browser direct autopublisher to prevent duplicate publishes. Backend scheduler is the source of truth. */
+// setInterval(v32AutoPublishScheduler, 15000);
+// window.addEventListener("focus", v32AutoPublishScheduler);
+// document.addEventListener("visibilitychange", () => { if(!document.hidden) v32AutoPublishScheduler(); });
 
 /* ===== End v32 ===== */
 
@@ -280,6 +281,63 @@ async function publishUploadedVideoNow(index){
   // the real local `queue` and `settings` variables. These scoped helpers are the ones
   // used by persistAll(), buttons, and the browser auto scheduler.
   let __serverQueueSyncTimerScoped = null;
+let __serverStateSyncTimerScoped = null;
+
+  async function syncAppStateToServerNow(){
+    try{
+      const base = (settings.backendUrl || "/.netlify/functions").replace(/\/$/, "");
+      const safeVideos = videos.map(v => ({
+        id: v.id, name: v.name, size: v.size, type: v.type,
+        publicUrl: v.publicUrl || v.url || v.supabaseUrl || "",
+        url: v.publicUrl || v.url || v.supabaseUrl || "",
+        supabasePath: v.supabasePath || "",
+        uploadedToSupabase: !!v.uploadedToSupabase,
+        hook: v.hook || "", caption: v.caption || "",
+        score: Number(v.score || 50), topPerformer: !!v.topPerformer, success: !!v.success,
+        postedTo: v.postedTo || [], createdAt: v.createdAt || new Date().toISOString()
+      })).filter(v => v.publicUrl && !String(v.publicUrl).startsWith("blob:"));
+      await fetch(base + "/state", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ settings, videos: safeVideos, accounts, autopilot, savedAt: new Date().toISOString() })
+      });
+    }catch(err){
+      console.warn("Server state sync failed", err);
+    }
+  }
+
+  function syncAppStateToServerDebounced(){
+    clearTimeout(__serverStateSyncTimerScoped);
+    __serverStateSyncTimerScoped = setTimeout(syncAppStateToServerNow, 1200);
+  }
+
+  function activeQueueCount(){
+    return queue.filter(q => q && !["published","failed","deleted","skipped"].includes(q.status)).length;
+  }
+
+  function cleanupQueueForAutopilot(){
+    const allowed = new Set(["scheduled","publishing","waiting_publish","publish_check","published","failed","skipped"]);
+    const cutoff = Date.now() - 45 * 86400000;
+    queue = dedupeQueueItems((Array.isArray(queue) ? queue : []).filter(q => {
+      if(!q || !allowed.has(q.status || "scheduled")) return false;
+      const t = new Date(q.scheduledAt || q.publishedAt || q.createdAt || 0).getTime();
+      if(["published","failed","skipped"].includes(q.status) && t && t < cutoff) return false;
+      return true;
+    }));
+  }
+
+  function ensureRollingQueue(days = 3){
+    if(!autopilot || !videos.length || !accounts.length) return false;
+    cleanupQueueForAutopilot();
+    const target = Math.max(1, Number(settings.daily || 3)) * Math.max(1, accounts.length) * Number(days || 3);
+    if(activeQueueCount() >= target) return false;
+    const future = buildSmartQueue(days);
+    const before = queue.length;
+    queue = dedupeQueueItems([...queue, ...future])
+      .sort((a,b)=>new Date(a.scheduledAt || a.publishedAt || 0)-new Date(b.scheduledAt || b.publishedAt || 0));
+    return queue.length !== before;
+  }
+
 
   function toServerScheduledAtScoped(timeStr){
     const now = new Date();
@@ -362,23 +420,28 @@ async function publishUploadedVideoNow(index){
     }
   }
 
+  let __browserSchedulerPingAt = 0;
   async function browserAutoPublishScheduler(){
+    // v52: the browser no longer publishes directly. It only nudges the backend scheduler.
+    // This prevents the same queue item from being published by both the browser and Netlify Cron.
     try{
-      if(!Array.isArray(queue) || !queue.length) return;
-      const now = new Date();
-      for(let i = 0; i < queue.length; i++){
-        const item = queue[i];
-        if(!item || ["published", "publishing", "failed", "deleted", "waiting_publish", "publish_check"].includes(item.status)) continue;
+      if(!autopilot || !Array.isArray(queue) || !queue.length) return;
+      const nowTs = Date.now();
+      if(nowTs - __browserSchedulerPingAt < 60 * 1000) return;
+      const hasDue = queue.some(item => {
+        if(!item || ["published","publishing","failed","deleted","waiting_publish","publish_check","skipped"].includes(item.status)) return false;
         const raw = item.scheduledAt || toServerScheduledAtScoped(item.time || item.scheduledTime);
-        if(!raw) continue;
-        const dueAt = new Date(raw);
-        if(Number.isNaN(dueAt.getTime()) || dueAt.getTime() > now.getTime()) continue;
-        await publishNowFromQueue(i, { skipConfirm: true, silent: true, auto: true });
-        break; // publish one item per tick to prevent duplicate/parallel attempts
-      }
+        const dueAt = raw ? new Date(raw) : null;
+        return dueAt && !Number.isNaN(dueAt.getTime()) && dueAt.getTime() <= nowTs;
+      });
+      if(!hasDue) return;
+      __browserSchedulerPingAt = nowTs;
+      const base = (settings.backendUrl || "/.netlify/functions").replace(/\/$/, "");
+      await fetch(base + "/run-scheduler", { cache: "no-store" }).catch(()=>{});
+      await loadQueueFromServer().catch(()=>{});
     }catch(err){
-      console.error("Auto scheduler error", err);
-      try{ recordError("فشل محرك النشر التلقائي داخل المتصفح", err); }catch(e){}
+      console.error("Backend scheduler ping error", err);
+      try{ recordError("فشل تنبيه محرك النشر الخلفي", err); }catch(e){}
     }
   }
 
@@ -502,6 +565,7 @@ async function publishUploadedVideoNow(index){
         savedAt: new Date().toISOString()
       }));
       if (Array.isArray(queue)) syncQueueToServerDebounced();
+      syncAppStateToServerDebounced();
     } catch (err) {
       console.error("فشل حفظ البيانات", err);
     }
@@ -614,10 +678,23 @@ async function publishUploadedVideoNow(index){
     const day = new Date(scheduledAt);
     const ymd = Number.isNaN(day.getTime()) ? "" : day.toISOString().slice(0,10);
     return queue.some(q => {
-      if(["deleted","failed"].includes(q.status)) return false;
+      if(["deleted","skipped","failed"].includes(q.status)) return false;
       const qDay = new Date(q.scheduledAt || q.publishedAt || q.createdAt || 0);
       const qYmd = Number.isNaN(qDay.getTime()) ? "" : qDay.toISOString().slice(0,10);
       return queueItemVideoKey(q) === String(videoKey) && queueItemAccountKey(q) === String(accountKey) && qYmd === ymd;
+    });
+  }
+
+  function hasUsedBeforeForAccount(video, account, plannedMap){
+    const vid = normalizeVideoKey(video);
+    const acc = normalizeAccountKey(account);
+    const plannedKey = acc + "::" + vid;
+    if(plannedMap && (plannedMap.get(plannedKey) || []).length) return true;
+    return queue.some(q => {
+      if(queueItemVideoKey(q) !== String(vid) && String(q.video) !== String(video.name)) return false;
+      if(queueItemAccountKey(q) !== String(acc) && String(q.account) !== String(account.name || account.user || account.username)) return false;
+      if(["deleted","failed","skipped"].includes(q.status)) return false;
+      return true;
     });
   }
 
@@ -631,7 +708,7 @@ async function publishUploadedVideoNow(index){
     return queue.some(q => {
       if(queueItemVideoKey(q) !== String(vid) && String(q.video) !== String(video.name)) return false;
       if(queueItemAccountKey(q) !== String(acc) && String(q.account) !== String(account.name || account.user || account.username)) return false;
-      if(["deleted","failed"].includes(q.status)) return false;
+      if(["deleted","failed","skipped"].includes(q.status)) return false;
       const d = new Date(q.scheduledAt || q.publishedAt || q.createdAt || 0);
       if(Number.isNaN(d.getTime())) return false;
       return Math.abs(targetDate.getTime() - d.getTime()) < cooldown * 86400000;
@@ -647,18 +724,23 @@ async function publishUploadedVideoNow(index){
 
   function chooseSmartVideo(account, dayIndex, slotIndex, usedToday, plannedMap){
     const targetDate = new Date(Date.now() + dayIndex * 86400000);
-    const fresh = videos.filter(v => publicVideoUrl(v) && !usedToday.has(normalizeVideoKey(v)));
-    const noRepeat = fresh.filter(v => !hasRecentPublish(v, account, targetDate, plannedMap));
-    if(noRepeat.length) return noRepeat[(dayIndex + slotIndex) % noRepeat.length];
+    const usable = videos.filter(v => publicVideoUrl(v) && !String(publicVideoUrl(v)).startsWith("blob:") && !usedToday.has(normalizeVideoKey(v)));
 
-    // لا نعيد تدوير الفيديو إلا إذا كان ناجحاً فعلاً.
-    const winners = fresh.filter(v => {
+    // المرحلة الأولى: استهلاك كل الفيديوهات المخزنة مرة واحدة لكل حساب قبل أي إعادة تدوير.
+    const neverUsedForThisAccount = usable.filter(v => !hasUsedBeforeForAccount(v, account, plannedMap));
+    if(neverUsedForThisAccount.length){
+      return neverUsedForThisAccount[(dayIndex * Number(settings.daily || 3) + slotIndex) % neverUsedForThisAccount.length];
+    }
+
+    // المرحلة الثانية: بعد انتهاء كل الفيديوهات، نعيد تدوير الناجح فقط وبفاصل منع تكرار.
+    const winners = usable.filter(v => {
       const score = videoScore(v);
-      return v.topPerformer === true || v.success === true || score >= Number(settings.minimumRecycleScore || 70);
+      const isWinner = v.topPerformer === true || v.success === true || score >= Number(settings.minimumRecycleScore || 70);
+      return isWinner && !hasRecentPublish(v, account, targetDate, plannedMap);
     });
-    if(winners.length) return winners.sort((a,b)=>videoScore(b)-videoScore(a))[0];
+    if(winners.length) return winners.sort((a,b)=>videoScore(b)-videoScore(a))[slotIndex % winners.length];
 
-    // إذا لا يوجد فيديو آمن للتكرار، نترك الخانة فارغة بدل تكرار فيديو ضعيف.
+    // لا نكرر فيديو عادي إذا لم ينجح.
     return null;
   }
 
@@ -671,9 +753,8 @@ async function publishUploadedVideoNow(index){
     const baseTimes = Array.isArray(settings.times) && settings.times.length ? settings.times : ["08:00","16:00","00:00"];
     const perDay = Math.max(1, Number(settings.daily || baseTimes.length || 3));
     for(let d=0; d<days; d++){
-      const usedTodayGlobal = new Set();
       usableAccounts.forEach((a, accountIndex) => {
-        const usedToday = new Set(usedTodayGlobal);
+        const usedToday = new Set();
         for(let slot=0; slot<perDay; slot++){
           const v = chooseSmartVideo(a, d, slot + accountIndex, usedToday, plannedMap);
           if(!v) continue;
@@ -683,8 +764,8 @@ async function publishUploadedVideoNow(index){
           if(scheduled.getTime() < now.getTime() + 2*60000) scheduled.setDate(scheduled.getDate()+1);
           const vidKey = normalizeVideoKey(v);
           const accKey = normalizeAccountKey(a);
-          if(sameVideoAccountInQueue(vidKey, accKey, scheduled)) continue;
-          usedToday.add(vidKey); usedTodayGlobal.add(vidKey);
+          if(sameVideoAccountInQueue(vidKey, accKey, scheduled) || usedToday.has(vidKey)) continue;
+          usedToday.add(vidKey);
           markPlanned(plannedMap, v, a, scheduled);
           const stamp = scheduled.toISOString();
           out.push({
@@ -714,11 +795,17 @@ async function publishUploadedVideoNow(index){
   function dedupeQueueItems(items){
     const seen = new Set();
     const out = [];
-    [...items].sort((a,b)=>new Date(a.scheduledAt || a.publishedAt || 0)-new Date(b.scheduledAt || b.publishedAt || 0)).forEach(item => {
+    const priority = { publishing: 7, waiting_publish: 6, publish_check: 5, published: 4, scheduled: 3, failed: 2, skipped: 1 };
+    [...items].sort((a,b)=>{
+      const at = new Date(a.scheduledAt || a.publishedAt || 0).getTime() || 0;
+      const bt = new Date(b.scheduledAt || b.publishedAt || 0).getTime() || 0;
+      if(at !== bt) return at - bt;
+      return (priority[b.status] || 0) - (priority[a.status] || 0);
+    }).forEach(item => {
       if(!item || item.status === "deleted") return;
       const d = new Date(item.scheduledAt || item.publishedAt || item.createdAt || 0);
       const day = Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0,10);
-      const key = [queueItemAccountKey(item), queueItemVideoKey(item), day, item.status || "scheduled"].join("::");
+      const key = [queueItemAccountKey(item), queueItemVideoKey(item), day].join("::");
       if(seen.has(key)) return;
       seen.add(key);
       out.push(item);
@@ -1742,23 +1829,20 @@ persistAll();
       return;
     }
 
-    // v50: Rolling Queue فقط. لا نبني 30 يوم دفعة واحدة حتى لا يظهر 450 عنصر.
-    // المطلوب: 3 فيديو يومياً لكل حساب، مع استمرار يومي ومنع التكرار.
-    const days = 7;
+    // v51: Rolling Queue حقيقي. نبقي فقط 3 أيام أمامية حتى لا تكبر الجدولة،
+    // والسيرفر يعرف حالة الفيديوهات والحسابات ليعيد التعبئة تلقائياً عند الحاجة.
+    const days = 3;
     autopilot = true;
 
-    // نحافظ على المنشور/قيد النشر، ونحذف التكرارات المجدولة القديمة ثم نبني أسبوعاً متحركاً فقط.
     const protectedItems = queue.filter(q => ["published","publishing","waiting_publish","publish_check"].includes(q.status));
-    const future = buildSmartQueue(days);
-    const byId = new Map();
-    dedupeQueueItems([...protectedItems, ...future]).forEach(item => byId.set(String(item.id), item));
-    queue = Array.from(byId.values()).sort((a,b)=>new Date(a.scheduledAt || a.publishedAt || 0)-new Date(b.scheduledAt || b.publishedAt || 0));
+    queue = dedupeQueueItems(protectedItems);
+    ensureRollingQueue(days);
 
     renderAll();
     persistAll();
     await syncQueueToServerNow();
     openTab("queue");
-    alert(`تم بناء الجدولة الذكية: 3 فيديو يومياً لكل حساب لمدة أسبوع متحرك. عدد العناصر الآن: ${queue.length}`);
+    alert(`تم تشغيل الجدولة الذكية: 3 فيديو يومياً لكل حساب. الجدولة الأمامية الآن: ${activeQueueCount()} عنصر، ويتم تجديدها تلقائياً.`);
   }
 
   function isAmbiguousPublishError(err) {
@@ -1779,6 +1863,10 @@ persistAll();
   async function publishNowFromQueue(index, options = {}) {
     const item = queue[index];
     if (!item) throw new Error("عنصر الجدولة غير موجود");
+    if(["published","publishing","waiting_publish","publish_check"].includes(item.status)){
+      if(!options.silent) alert("هذا العنصر تم إرساله للنشر أو قيد النشر بالفعل.");
+      return { ok: true, skipped: "already_processing", status: item.status };
+    }
 
     const silent = !!options.silent;
     const publishKey = "queue_" + (item.id || item.videoId || index);
@@ -1827,6 +1915,13 @@ persistAll();
       item.publishedAt = new Date().toISOString();
       item.error = "";
       item.result = data;
+      if (video) {
+        video.status = "تم النشر";
+        video.success = true;
+        video.score = Math.max(Number(video.score || 50), 75);
+        video.postedTo = [...(video.postedTo || []), account.name || account.user || item.account];
+      }
+      ensureRollingQueue(3);
       persistAll();
       await syncQueueToServerNow();
       renderAll();
