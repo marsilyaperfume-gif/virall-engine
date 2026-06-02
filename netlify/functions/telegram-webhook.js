@@ -24,6 +24,20 @@ async function writeState(state){
   const store = blobStore("app_state");
   await store.setJSON("state", state && typeof state === "object" ? state : {});
 }
+
+async function readAllowedUsers(){
+  const store = blobStore("telegram_access");
+  const data = (await store.get("allowed", { type: "json" })) || [];
+  return Array.isArray(data) ? data.map(x => String(x || "").trim().replace(/^@+/, "").toLowerCase()).filter(Boolean) : [];
+}
+function senderAllowed(message, allowed){
+  if(!allowed || !allowed.length) return true; // open mode until you add allowed users from the site
+  const from = (message && message.from) || {};
+  const username = String(from.username || "").trim().replace(/^@+/, "").toLowerCase();
+  const id = String(from.id || "").trim().toLowerCase();
+  return (!!username && allowed.includes(username)) || (!!id && allowed.includes(id));
+}
+
 async function appendTelegramLog(entry){
   const store = blobStore("telegram_uploads");
   const current = (await store.get("uploads", { type: "json" })) || [];
@@ -110,6 +124,15 @@ exports.handler = async function(event){
   try { update = JSON.parse(event.body || "{}"); } catch(err) { return json(400, { ok: false, error: "Invalid JSON" }); }
   const message = update.message || update.channel_post || null;
   const chatId = message && message.chat && message.chat.id;
+
+  const allowedUsers = await readAllowedUsers().catch(() => []);
+  if(message && !senderAllowed(message, allowedUsers)){
+    const from = message.from || {};
+    await appendTelegramLog({ ok: false, stage: "blocked_user", fileName: "blocked", error: `Blocked Telegram sender @${from.username || ""} ${from.id || ""}` }).catch(() => {});
+    await reply(chatId, "غير مسموح لك بإرسال فيديوهات لهذا البوت. تواصل مع المسؤول لإضافتك.");
+    return json(200, { ok: true, blocked: true });
+  }
+
   const video = pickVideoMessage(message);
 
   if(!video){

@@ -286,6 +286,20 @@ let __serverStateSyncTimerScoped = null;
   async function syncAppStateToServerNow(){
     try{
       const base = (settings.backendUrl || "/.netlify/functions").replace(/\/$/, "");
+
+      // v61: before pushing local state, pull server state and merge Telegram videos.
+      // This prevents a browser with old localStorage from overwriting videos uploaded by Telegram.
+      try {
+        const resState = await fetch(base + "/state", { cache: "no-store" });
+        const dataState = await resState.json().catch(() => ({}));
+        const serverVideos = dataState && dataState.state && Array.isArray(dataState.state.videos) ? dataState.state.videos : [];
+        const byId = new Map((videos || []).map(v => [String(v.id || v.publicUrl || v.url || v.name), v]));
+        serverVideos.forEach(v => {
+          const key = String(v.id || v.publicUrl || v.url || v.name);
+          if(key && !byId.has(key)) videos.push(v);
+        });
+      } catch(e) {}
+
       const safeVideos = videos.map(v => ({
         id: v.id, name: v.name, size: v.size, type: v.type,
         publicUrl: v.publicUrl || v.url || v.supabaseUrl || "",
@@ -294,7 +308,7 @@ let __serverStateSyncTimerScoped = null;
         uploadedToSupabase: !!v.uploadedToSupabase,
         hook: v.hook || "", caption: v.caption || "",
         score: Number(v.score || 50), topPerformer: !!v.topPerformer, success: !!v.success,
-        postedTo: v.postedTo || [], createdAt: v.createdAt || new Date().toISOString()
+        postedTo: v.postedTo || [], createdAt: v.createdAt || new Date().toISOString(), source: v.source || ""
       })).filter(v => v.publicUrl && !String(v.publicUrl).startsWith("blob:"));
       await fetch(base + "/state", {
         method: "POST",
@@ -555,7 +569,10 @@ let __serverStateSyncTimerScoped = null;
         compatibility: v.compatibility,
         compatibilityLabel: v.compatibilityLabel,
         repairStatus: v.repairStatus,
-        postedTo: v.postedTo || []
+        postedTo: v.postedTo || [],
+        source: v.source || "",
+        telegramFileId: v.telegramFileId || "",
+        telegramChatId: v.telegramChatId || ""
       }));
       localStorage.setItem(APP_STORE_KEY, JSON.stringify({
         loggedIn: $("app") && !$("app").classList.contains("hidden"),
@@ -570,6 +587,34 @@ let __serverStateSyncTimerScoped = null;
       syncAppStateToServerDebounced();
     } catch (err) {
       console.error("فشل حفظ البيانات", err);
+    }
+  }
+
+
+  async function loadStateFromServerAndMerge(){
+    try{
+      const base = (settings.backendUrl || "/.netlify/functions").replace(/\/$/, "");
+      const res = await fetch(base + "/state", { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      const state = data && data.state ? data.state : {};
+      if(!res.ok || !Array.isArray(state.videos)) return false;
+      const before = videos.length;
+      const byKey = new Map((videos || []).map(v => [String(v.id || v.publicUrl || v.url || v.name), v]));
+      state.videos.forEach(v => {
+        const key = String(v.id || v.publicUrl || v.url || v.name);
+        if(key && !byKey.has(key)) { videos.push(v); byKey.set(key, v); }
+      });
+      if(state.settings && typeof state.settings === "object") settings = { ...settings, ...state.settings };
+      if(Array.isArray(state.accounts) && state.accounts.length && !accounts.length) accounts = state.accounts;
+      if(videos.length !== before){
+        persistAll();
+        renderVideos();
+        renderStats();
+      }
+      return videos.length !== before;
+    }catch(err){
+      console.warn("Server state merge failed", err);
+      return false;
     }
   }
 
@@ -2745,6 +2790,8 @@ persistAll();
   }
 
   async function renderTelegramUploads() {
+    await loadStateFromServerAndMerge();
+    await loadTelegramAccess();
     const el = $("telegramUploadsList");
     if (!el) return;
     try {
@@ -2768,6 +2815,50 @@ persistAll();
     } catch (err) {
       el.innerHTML = `<div class="empty-state">تعذر قراءة سجل تلجرام: ${escapeHtml(err.message || String(err))}</div>`;
     }
+  }
+
+
+  async function loadTelegramAccess(){
+    const list = $("telegramAllowedList");
+    const mode = $("telegramAccessMode");
+    if(!list && !mode) return;
+    try{
+      const base = (settings.backendUrl || "/.netlify/functions").replace(/\/$/, "");
+      const res = await fetch(base + "/telegram-access", { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      const allowed = Array.isArray(data.allowed) ? data.allowed : [];
+      if(mode) mode.textContent = allowed.length ? `وضع الحماية: مسموح فقط لـ ${allowed.length} مستخدم` : "وضع الاختبار: مفتوح للجميع";
+      if(list) {
+        list.innerHTML = allowed.length ? allowed.map(u => `<span class="allowed-chip">@${escapeHtml(u)} <button type="button" data-remove-telegram-user="${escapeHtml(u)}">×</button></span>`).join("") : `<div class="empty-state small">لا يوجد مستخدمين. البوت مفتوح حالياً للاختبار.</div>`;
+        list.querySelectorAll("[data-remove-telegram-user]").forEach(btn => btn.addEventListener("click", () => removeTelegramAllowed(btn.dataset.removeTelegramUser)));
+      }
+    }catch(err){
+      if(mode) mode.textContent = "تعذر قراءة قائمة السماح: " + (err.message || String(err));
+    }
+  }
+
+  async function addTelegramAllowed(){
+    const input = $("telegramAllowedInput");
+    const user = input ? input.value.trim().replace(/^@+/, "") : "";
+    if(!user) return alert("اكتب يوزر تلجرام أو ID");
+    try{
+      const base = (settings.backendUrl || "/.netlify/functions").replace(/\/$/, "");
+      const res = await fetch(base + "/telegram-access", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ user }) });
+      const data = await res.json().catch(() => ({}));
+      if(!res.ok || data.ok === false) throw new Error(data.error || "فشل إضافة المستخدم");
+      input.value = "";
+      await loadTelegramAccess();
+    }catch(err){ alert("فشل إضافة المستخدم: " + (err.message || String(err))); }
+  }
+
+  async function removeTelegramAllowed(user){
+    try{
+      const base = (settings.backendUrl || "/.netlify/functions").replace(/\/$/, "");
+      const res = await fetch(base + "/telegram-access", { method:"DELETE", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ user }) });
+      const data = await res.json().catch(() => ({}));
+      if(!res.ok || data.ok === false) throw new Error(data.error || "فشل حذف المستخدم");
+      await loadTelegramAccess();
+    }catch(err){ alert("فشل حذف المستخدم: " + (err.message || String(err))); }
   }
 
   function renderAll() {
@@ -2799,11 +2890,15 @@ persistAll();
     hydrateAll();
     loadPublicConfig().catch(() => {});
     loadQueueFromServer();
+    loadStateFromServerAndMerge();
     startBrowserAutoPublisher();
     loadSettingsToUI();
     renderAll();
     const tgSetup = $("setupTelegramBtn"); if (tgSetup) tgSetup.addEventListener("click", setupTelegramWebhook);
     const tgRefresh = $("refreshTelegramBtn"); if (tgRefresh) tgRefresh.addEventListener("click", renderTelegramUploads);
+    const tgAddAllowed = $("addTelegramAllowedBtn"); if (tgAddAllowed) tgAddAllowed.addEventListener("click", addTelegramAllowed);
+    const tgAllowedInput = $("telegramAllowedInput"); if (tgAllowedInput) tgAllowedInput.addEventListener("keydown", (e) => { if(e.key === "Enter") addTelegramAllowed(); });
+    loadTelegramAccess();
     if (new URLSearchParams(window.location.search).get("connected")) {
       loadOfficialAccounts();
       history.replaceState({}, "", window.location.pathname);

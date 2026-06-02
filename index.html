@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Marrsile Growth Engine v60</title>
+<title>Marrsile Growth Engine v61</title>
 <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
@@ -12,7 +12,7 @@
 <section id="loginScreen" class="login">
   <div class="login-card">
     <div class="mark">M</div>
-    <h1>MARRSILE <span>GROWTH ENGINE V60</span></h1>
+    <h1>MARRSILE <span>GROWTH ENGINE V61</span></h1>
     <p>منصة نشر تلقائي ذكية تعمل 24/7 مع رفع جماعي وجدولة ذكية.</p>
     <input id="email" placeholder="Email"/>
     <input id="password" placeholder="Password" type="password"/>
@@ -54,7 +54,7 @@
     <section id="dashboard" class="tab">
       <div class="hero card">
         <div>
-          <span class="pill">v60 Telegram Uploads</span>
+          <span class="pill">v61 Telegram Library Sync</span>
           <h1>Growth Engine للنشر التلقائي</h1>
           <p>رفع جماعي ذكي، جدولة يومية، منع تكرار، ونشر تلقائي للفيديو الأصلي بدون كتابة فوقه.</p>
           <div class="actions">
@@ -338,32 +338,41 @@
       <div id="hookFactory" class="factory caption-factory"></div>
     </section>
 
-
     <section id="telegram" class="tab hidden">
       <div class="toolbar card">
         <div>
           <h3>Telegram Uploads</h3>
-          <p>أرسل فيديو MP4 إلى بوت تلجرام، وسيتم رفعه تلقائيًا إلى مكتبة الفيديوهات والجدولة القادمة. هذا القسم لا يغيّر ربط Instagram أو محرك النشر.</p>
+          <p>أرسل الفيديو للبوت، وسيتم رفعه إلى Supabase ثم إضافته إلى مكتبة الفيديوهات للجدولة القادمة.</p>
         </div>
         <div class="actions">
           <button class="primary" id="setupTelegramBtn" type="button">ربط Webhook</button>
-          <button class="secondary" id="refreshTelegramBtn" type="button">تحديث الحالة</button>
+          <button class="secondary" id="refreshTelegramBtn" type="button">تحديث</button>
         </div>
       </div>
       <div class="telegram-grid">
         <div class="card telegram-card">
-          <h3>طريقة الاستخدام</h3>
-          <ol class="simple-list numbered">
-            <li>افتح بوت <b>@Reels_Virall_Bot</b></li>
-            <li>أرسل الفيديو كـ Video أو File</li>
-            <li>انتظر رسالة نجاح الرفع</li>
-            <li>سيظهر الفيديو في قسم الفيديوهات ويدخل الجدولة تلقائيًا</li>
+          <h3>حالة الربط</h3>
+          <p id="telegramStatus" class="muted">جاهز للربط. اضغط ربط Webhook مرة واحدة بعد كل Deploy إذا احتجت.</p>
+          <ol class="numbered">
+            <li>ضع TELEGRAM_BOT_TOKEN في Netlify.</li>
+            <li>اضغط ربط Webhook.</li>
+            <li>أرسل فيديو للبوت.</li>
+            <li>سيظهر الفيديو في مكتبة الفيديوهات تلقائيًا.</li>
           </ol>
-          <div id="telegramStatus" class="status-box">جاهز للربط بعد نشر هذه النسخة على Netlify.</div>
         </div>
-        <div class="card telegram-card">
-          <h3>آخر الفيديوهات من تلجرام</h3>
-          <div id="telegramUploadsList" class="telegram-list empty-state">لا توجد بيانات بعد.</div>
+        <div class="card telegram-card access-card">
+          <h3>الأشخاص المسموح لهم</h3>
+          <p class="muted">اترك القائمة فارغة أثناء الاختبار. عند إضافة أي يوزر، سيتم رفض أي شخص غير موجود بالقائمة.</p>
+          <div class="access-row">
+            <input id="telegramAllowedInput" placeholder="username بدون @ أو Telegram ID"/>
+            <button class="primary" id="addTelegramAllowedBtn" type="button">إضافة</button>
+          </div>
+          <div id="telegramAccessMode" class="status-box compact">وضع الاختبار: مفتوح للجميع</div>
+          <div id="telegramAllowedList" class="allowed-list"></div>
+        </div>
+        <div class="card telegram-card telegram-log-card">
+          <h3>آخر فيديوهات تلجرام</h3>
+          <div id="telegramUploadsList" class="telegram-list"></div>
         </div>
       </div>
     </section>
