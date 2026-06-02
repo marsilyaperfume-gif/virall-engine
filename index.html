@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Marrsile Auto Reels v37 Clean Supabase Diagnostics</title>
+<title>Marrsile Growth Engine v47</title>
 <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
@@ -12,8 +12,8 @@
 <section id="loginScreen" class="login">
   <div class="login-card">
     <div class="mark">M</div>
-    <h1>MARRSILE <span>AUTO REELS V37</span></h1>
-    <p>نسخة نظيفة: Supabase من Netlify + سجل أخطاء واضح + نشر 24/7.</p>
+    <h1>MARRSILE <span>GROWTH ENGINE V47</span></h1>
+    <p>منصة نشر تلقائي ذكية تعمل 24/7 مع رفع جماعي وجدولة ذكية.</p>
     <input id="email" placeholder="Email"/>
     <input id="password" placeholder="Password" type="password"/>
     <button id="loginBtn">دخول</button>
@@ -24,13 +24,13 @@
   <aside>
     <div class="brand">
       <div class="mark mini">M</div>
-      <div><b>MARRSILE</b><span>Clean Control</span></div>
+      <div><b>MARRSILE</b><span>Growth Engine</span></div>
     </div>
     <button class="nav active" data-tab="dashboard">الرئيسية</button>
     <button class="nav" data-tab="control">Control Center</button>
     <button class="nav" data-tab="videos">الفيديوهات</button>
     <button class="nav" data-tab="accounts">الحسابات</button>
-    <button class="nav" data-tab="hooks">مصنع الهوكات</button>
+    <button class="nav" data-tab="hooks">مصنع الكابشن</button>
     <button class="nav" data-tab="queue">Autopilot Queue</button>
     <button class="nav" data-tab="settings">النظام</button>
     <button class="nav" data-tab="errors">الأخطاء</button>
@@ -52,9 +52,9 @@
     <section id="dashboard" class="tab">
       <div class="hero card">
         <div>
-          <span class="pill">v37 Clean 24/7</span>
-          <h1>الرفع والهوكات يعملان الآن بكود نظيف</h1>
-          <p>تم فصل محرك الرفع عن محرك الهوكات لمنع الأخطاء. زر توليد الهوك يعمل من كل مكان، والرفع يدعم الضغط والسحب والإفلات.</p>
+          <span class="pill">v47 Smart 24/7</span>
+          <h1>Growth Engine للنشر التلقائي الذكي</h1>
+          <p>واجهة جديدة، رفع جماعي مع متابعة التقدم، وجدولة يومية ذكية تمنع تكرار الفيديو وتعيد استخدام المحتوى الناجح فقط.</p>
           <div class="actions">
             <button class="primary" id="startAutoBtn">تشغيل Autopilot</button>
             <button class="secondary" data-open="control">تعديل الإعدادات</button>
@@ -68,11 +68,17 @@
         </div>
       </div>
 
-      <div class="stats">
+      <div class="stats stats6">
         <div><b id="statVideos">0</b><span>فيديو</span></div>
         <div><b id="statAccounts">0</b><span>حساب</span></div>
         <div><b id="statQueue">0</b><span>Queue</span></div>
+        <div><b id="statPublished">0</b><span>منشور</span></div>
+        <div><b id="statDue">0</b><span>جاهز اليوم</span></div>
         <div><b id="autoState">OFF</b><span>Autopilot</span></div>
+      </div>
+      <div class="card smart-panel">
+        <h3>حالة المحرك الذكي</h3>
+        <div id="engineHealth" class="engine-health">جاري قراءة البيانات...</div>
       </div>
     </section>
 
@@ -216,6 +222,10 @@
             <input id="delayMin" type="number" min="0" value="10" placeholder="أقل تأخير بالدقائق"/>
             <input id="delayMax" type="number" min="0" value="30" placeholder="أعلى تأخير بالدقائق"/>
           </div>
+          <label>عدد أيام الجدولة المسبقة</label>
+          <input id="scheduleDays" type="number" min="7" max="90" value="30"/>
+          <label>أقل مدة قبل تكرار نفس الفيديو على نفس الحساب</label>
+          <input id="repeatCooldownDays" type="number" min="1" max="90" value="21"/>
         </div>
 
         <div class="card">
@@ -232,9 +242,22 @@
     </section>
 
     <section id="videos" class="tab hidden">
-      <div id="dropZone" class="drop-zone">
-        <h3>اضغط هنا أو اسحب الفيديوهات لرفعها</h3>
-        <p>يدعم MP4 / MOV / WebM</p>
+      <div id="dropZone" class="drop-zone smart-drop">
+        <h3>ارفع عدد كبير من الفيديوهات دفعة واحدة</h3>
+        <p>Drag & Drop · متابعة التقدم · تقدير الوقت المتبقي · Retry تلقائي عند التعثر</p>
+      </div>
+
+      <div id="uploadPanel" class="card upload-panel hidden">
+        <div class="section-head">
+          <div>
+            <h3>مركز الرفع الذكي</h3>
+            <p id="uploadSummary">جاهز للرفع</p>
+          </div>
+          <b id="uploadPercent">0%</b>
+        </div>
+        <div class="progress"><span id="uploadProgressBar"></span></div>
+        <div class="upload-meta"><span id="uploadEta">الوقت المتبقي: --</span><span id="uploadSpeed">السرعة: --</span></div>
+        <div id="uploadList" class="upload-list"></div>
       </div>
 
       

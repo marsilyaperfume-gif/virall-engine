@@ -257,7 +257,10 @@ async function publishUploadedVideoNow(index){
     cloudinaryUploadPreset: "",
     supabaseUrl: "",
     supabaseAnonKey: "",
-    supabaseBucket: "reels"
+    supabaseBucket: "reels",
+    scheduleDays: 30,
+    repeatCooldownDays: 21,
+    minimumRecycleScore: 70
   };
 
   let settings = loadSettings();
@@ -533,6 +536,142 @@ async function publishUploadedVideoNow(index){
     localStorage.setItem(APP_STORE_KEY, JSON.stringify(saved));
   }
 
+
+  let uploadState = { active:false, total:0, done:0, failed:0, bytesTotal:0, bytesDone:0, startedAt:0, currentFile:"" };
+
+  function fmtBytes(bytes){
+    const n = Number(bytes || 0);
+    if(n > 1024*1024*1024) return (n/1024/1024/1024).toFixed(1)+" GB";
+    if(n > 1024*1024) return (n/1024/1024).toFixed(1)+" MB";
+    if(n > 1024) return (n/1024).toFixed(1)+" KB";
+    return n + " B";
+  }
+
+  function fmtDuration(sec){
+    sec = Math.max(0, Math.round(Number(sec || 0)));
+    const m = Math.floor(sec/60), s = sec % 60;
+    if(m >= 60){ const h = Math.floor(m/60); return `${h} ساعة و ${m%60} دقيقة`; }
+    if(m > 0) return `${m} دقيقة و ${s} ثانية`;
+    return `${s} ثانية`;
+  }
+
+  function renderUploadProgress(){
+    const panel = $("uploadPanel");
+    if(!panel) return;
+    panel.classList.toggle("hidden", !uploadState.active && uploadState.total === 0);
+    const pct = uploadState.bytesTotal ? Math.min(100, Math.round((uploadState.bytesDone/uploadState.bytesTotal)*100)) : 0;
+    if($("uploadPercent")) $("uploadPercent").textContent = pct + "%";
+    if($("uploadProgressBar")) $("uploadProgressBar").style.width = pct + "%";
+    if($("uploadSummary")) $("uploadSummary").textContent = uploadState.active ? `جار رفع ${uploadState.done + uploadState.failed + 1}/${uploadState.total}: ${uploadState.currentFile || ""}` : `تم الرفع: ${uploadState.done} · فشل: ${uploadState.failed}`;
+    const elapsed = (Date.now() - uploadState.startedAt) / 1000;
+    const speed = elapsed > 0 ? uploadState.bytesDone / elapsed : 0;
+    const remaining = speed > 0 ? (uploadState.bytesTotal - uploadState.bytesDone) / speed : 0;
+    if($("uploadEta")) $("uploadEta").textContent = uploadState.active ? `الوقت المتبقي: ${fmtDuration(remaining)}` : "الرفع مكتمل";
+    if($("uploadSpeed")) $("uploadSpeed").textContent = speed ? `السرعة: ${fmtBytes(speed)}/ث` : "السرعة: --";
+  }
+
+  function pushUploadRow(file, status, pct, note){
+    const list = $("uploadList");
+    if(!list) return;
+    const id = "u_" + btoa(unescape(encodeURIComponent(file.name))).replace(/=/g,"").slice(0,18) + "_" + file.size;
+    let row = document.getElementById(id);
+    if(!row){
+      row = document.createElement("div");
+      row.id = id;
+      row.className = "upload-row";
+      row.innerHTML = `<b></b><span></span><div class="mini-progress"><i></i></div><small></small>`;
+      list.prepend(row);
+    }
+    row.querySelector("b").textContent = file.name;
+    row.querySelector("span").textContent = status;
+    row.querySelector("i").style.width = Math.max(0, Math.min(100, pct || 0)) + "%";
+    row.querySelector("small").textContent = note || fmtBytes(file.size);
+    row.classList.toggle("done", pct >= 100 && status.includes("تم"));
+    row.classList.toggle("bad", status.includes("فشل"));
+  }
+
+  function videoScore(v){
+    return Number(v.score || v.performanceScore || v.viewsScore || (v.topPerformer ? 85 : 50));
+  }
+
+  function hasRecentPublish(video, account, targetDate){
+    const cooldown = Number(settings.repeatCooldownDays || 21);
+    const vid = video.id || video.name;
+    const acc = account.id || account.name || account.user || account.username;
+    return queue.some(q => {
+      if(String(q.videoId || q.video) !== String(vid) && String(q.video) !== String(video.name)) return false;
+      if(String(q.accountId || q.account) !== String(acc) && String(q.account) !== String(account.name || account.user || account.username)) return false;
+      if(["deleted","failed"].includes(q.status)) return false;
+      const d = new Date(q.scheduledAt || q.publishedAt || q.createdAt || 0);
+      if(Number.isNaN(d.getTime())) return false;
+      return Math.abs(targetDate.getTime() - d.getTime()) < cooldown * 86400000;
+    });
+  }
+
+  function chooseSmartVideo(account, dayIndex, slotIndex, usedToday){
+    const fresh = videos.filter(v => publicVideoUrl(v) && !usedToday.has(v.id || v.name));
+    const targetDate = new Date(Date.now() + dayIndex * 86400000);
+    const noRepeat = fresh.filter(v => !hasRecentPublish(v, account, targetDate));
+    if(noRepeat.length) return noRepeat[(dayIndex + slotIndex) % noRepeat.length];
+    const winners = fresh.filter(v => videoScore(v) >= Number(settings.minimumRecycleScore || 70));
+    if(winners.length) return winners.sort((a,b)=>videoScore(b)-videoScore(a))[0];
+    return fresh[(dayIndex + slotIndex) % Math.max(1, fresh.length)] || videos[(dayIndex + slotIndex) % Math.max(1, videos.length)];
+  }
+
+  function buildSmartQueue(days){
+    const official = accounts.filter(a => a.official !== false && a.id);
+    const usableAccounts = official.length ? official : accounts;
+    const out = [];
+    const now = new Date();
+    const baseTimes = Array.isArray(settings.times) && settings.times.length ? settings.times : ["08:00","16:00","00:00"];
+    const perDay = Math.max(1, Number(settings.daily || baseTimes.length || 1));
+    for(let d=0; d<days; d++){
+      const usedTodayGlobal = new Set();
+      usableAccounts.forEach((a, accountIndex) => {
+        const usedToday = new Set(usedTodayGlobal);
+        for(let slot=0; slot<perDay; slot++){
+          const v = chooseSmartVideo(a, d, slot + accountIndex, usedToday);
+          if(!v) continue;
+          const time = baseTimes[slot % baseTimes.length] || "08:00";
+          const delay = randomDelayMinutes(accountIndex + slot);
+          const scheduled = scheduledDateForDay(time, d, delay);
+          if(scheduled.getTime() < now.getTime() + 2*60000) scheduled.setDate(scheduled.getDate()+1);
+          const vidKey = v.id || v.name;
+          usedToday.add(vidKey); usedTodayGlobal.add(vidKey);
+          const stamp = scheduled.toISOString();
+          out.push({
+            id: `${a.id || a.name}_${vidKey}_${stamp}`,
+            videoId: v.id,
+            video: v.name,
+            videoUrl: publicVideoUrl(v),
+            accountId: a.id,
+            account: a.name || a.user || a.username,
+            market: a.market || "عام الخليج",
+            time: scheduled.toLocaleTimeString("ar", {hour:"2-digit", minute:"2-digit"}),
+            scheduledAt: stamp,
+            status: "scheduled",
+            hook: settings.autoHook ? makeHook(v.name) : v.hook,
+            caption: settings.autoCaption ? makeCaption(a.market || "عام الخليج", v.hook, v.name) : (v.caption || ""),
+            createdAt: new Date().toISOString(),
+            smart: true,
+            dayIndex: d,
+            recycleScore: videoScore(v)
+          });
+        }
+      });
+    }
+    return out.sort((a,b)=>new Date(a.scheduledAt)-new Date(b.scheduledAt));
+  }
+
+  function scheduledDateForDay(timeStr, dayOffset, extraMinutes){
+    const [hh, mm] = String(timeStr || "08:00").split(":").map(n => Number(n || 0));
+    const d = new Date();
+    d.setDate(d.getDate() + Number(dayOffset || 0));
+    d.setHours(hh || 0, mm || 0, 0, 0);
+    d.setMinutes(d.getMinutes() + Number(extraMinutes || 0));
+    return d;
+  }
+
   async function uploadToCloudinary(file) {
     // v38 clean: upload through a Netlify Function using Supabase Service Role.
     // This bypasses browser RLS problems while keeping the secret key hidden on Netlify.
@@ -798,7 +937,7 @@ async function publishUploadedVideoNow(index){
     document.querySelectorAll("[data-tab]").forEach(btn => btn.addEventListener("click", () => openTab(btn.dataset.tab)));
     document.querySelectorAll("[data-open]").forEach(btn => btn.addEventListener("click", () => openTab(btn.dataset.open)));
 
-    ["hookType","hookPower","emojiMode","hookLength","hookStyle","fontSize","hookTop","boxWidth","hookOpacity","hookRadius","offerType","ctaMode","hashtags","captionFooter"].forEach(id => {
+    ["hookType","hookPower","emojiMode","hookLength","hookStyle","fontSize","hookTop","boxWidth","hookOpacity","hookRadius","offerType","ctaMode","hashtags","captionFooter","scheduleDays","repeatCooldownDays"].forEach(id => {
       $(id).addEventListener("input", () => { readSettingsFromUI(); applyLook(); });
       $(id).addEventListener("change", () => { readSettingsFromUI(); applyLook(); });
     });
@@ -941,9 +1080,34 @@ async function publishUploadedVideoNow(index){
       return;
     }
 
+    uploadState = {
+      active: true,
+      total: videoFiles.length,
+      done: 0,
+      failed: 0,
+      bytesTotal: videoFiles.reduce((sum, f) => sum + (f.size || 0), 0),
+      bytesDone: 0,
+      startedAt: Date.now(),
+      currentFile: ""
+    };
+    if ($("uploadList")) $("uploadList").innerHTML = "";
+    renderUploadProgress();
+    openTab("videos");
+
+    const startIndex = videos.length;
     for (const file of videoFiles) {
+      uploadState.currentFile = file.name;
+      pushUploadRow(file, "جاري الرفع", 8, fmtBytes(file.size));
+      renderUploadProgress();
+      let uploaded;
       try {
-        const uploaded = await uploadToCloudinary(file);
+        try {
+          uploaded = await uploadToCloudinary(file);
+        } catch(firstErr) {
+          pushUploadRow(file, "إعادة محاولة تلقائية", 45, firstErr.message || String(firstErr));
+          await new Promise(r => setTimeout(r, 1200));
+          uploaded = await uploadToCloudinary(file);
+        }
         videos.push({
           id: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random())),
           name: file.name,
@@ -960,23 +1124,33 @@ async function publishUploadedVideoNow(index){
           supabasePath: uploaded.supabasePath || "",
           uploadedToSupabase: !!uploaded.uploadedToSupabase,
           repairStatus: "not_needed",
-          postedTo: []
+          postedTo: [],
+          score: 50,
+          topPerformer: false,
+          createdAt: new Date().toISOString()
         });
+        uploadState.done++;
+        uploadState.bytesDone += file.size || 0;
+        pushUploadRow(file, "تم الرفع ✅", 100, "جاهز للجدولة");
         persistAll();
       } catch (err) {
+        uploadState.failed++;
+        uploadState.bytesDone += file.size || 0;
+        pushUploadRow(file, "فشل الرفع", 100, err.message || String(err));
         recordError("فشل رفع الفيديو من الواجهة", err, { file: file.name });
-        alert("فشل رفع " + file.name + ": " + (err.message || err) + "\n\nتم تسجيل الخطأ في قسم الأخطاء.");
-        openTab("errors");
       }
+      renderUploadProgress();
     }
 
-    selected = Math.max(0, videos.length - videoFiles.length);
-    scanNewVideos(videos.slice(selected));
+    uploadState.active = false;
+    renderUploadProgress();
+    selected = Math.max(0, startIndex);
+    scanNewVideos(videos.slice(startIndex));
     renderAll();
     persistAll();
     loadEditor();
-    openTab("videos");
-    alert("تم رفع " + videoFiles.length + " فيديو");
+    if (uploadState.failed) alert(`تم رفع ${uploadState.done} فيديو وفشل ${uploadState.failed}. راجع مركز الرفع أو سجل الأخطاء.`);
+    else alert("تم رفع " + uploadState.done + " فيديو بنجاح");
   }
 
   function clean(parts) {
@@ -1097,7 +1271,7 @@ ${rand(ctaList)}.`;
 
   function readSettingsFromUI() {
     ["hookType","hookPower","emojiMode","hookLength","hookStyle","offerType","ctaMode","hashtags","captionFooter","delayMode"].forEach(id => { if($(id)) settings[id] = $(id).value; });
-    ["delayMin","delayMax"].forEach(id => { if($(id)) settings[id] = Number($(id).value || 0); });
+    ["delayMin","delayMax","scheduleDays","repeatCooldownDays"].forEach(id => { if($(id)) settings[id] = Number($(id).value || 0); });
     ["fontSize","hookTop","boxWidth","hookOpacity","hookRadius"].forEach(id => settings[id] = Number($(id).value));
     ["autoHook","autoCaption","avoidRepeat","abTesting","smartRepost","autoRetry"].forEach(id => settings[id] = $(id).checked);
     saveSettings();
@@ -1106,7 +1280,7 @@ ${rand(ctaList)}.`;
 
   function loadSettingsToUI() {
     ["hookType","hookPower","emojiMode","hookLength","hookStyle","offerType","ctaMode","hashtags","captionFooter","delayMode"].forEach(id => { if ($(id)) $(id).value = settings[id]; });
-    ["delayMin","delayMax"].forEach(id => { if ($(id)) $(id).value = settings[id]; });
+    ["delayMin","delayMax","scheduleDays","repeatCooldownDays"].forEach(id => { if ($(id)) $(id).value = settings[id]; });
     ["fontSize","hookTop","boxWidth","hookOpacity","hookRadius"].forEach(id => { if ($(id)) $(id).value = settings[id]; });
     ["autoHook","autoCaption","avoidRepeat","abTesting","smartRepost","autoRetry"].forEach(id => { if ($(id)) $(id).checked = settings[id]; });
     if ($("backendUrl")) $("backendUrl").value = settings.backendUrl || "";
@@ -1191,7 +1365,7 @@ ${rand(ctaList)}.`;
   function renderTimes() {
     $("timeList").innerHTML = settings.times.map((t, i) => `
       <div class="time-row">
-        <input type="time" value="" data-time-index="${i}">
+        <input type="time" value="${escapeHtml(t)}" data-time-index="${i}">
         <button data-remove-time="${i}">حذف</button>
       </div>
     `).join("");
@@ -1471,35 +1645,22 @@ persistAll();
       return;
     }
 
+    const days = Math.max(7, Math.min(90, Number(settings.scheduleDays || 30)));
     autopilot = true;
-    queue = [];
-    videos.forEach((v, i) => {
-      accounts.forEach((a, j) => {
-        const scheduledTime = addMinutesToTime(settings.times[(i + j) % settings.times.length], randomDelayMinutes(j));
-        queue.push({
-          id: `${a.id || a.name}_${v.id || v.name}_${scheduledTime}_${Date.now()}`,
-          videoId: v.id,
-          video: v.name,
-          videoUrl: publicVideoUrl(v),
-          accountId: a.id,
-          account: a.name || a.user || a.username,
-          market: a.market,
-          time: scheduledTime,
-          scheduledAt: toServerScheduledAt(scheduledTime),
-          status: "scheduled",
-          hook: v.hook,
-          caption: makeCaption(a.market),
-          createdAt: new Date().toISOString()
-        });
-      });
-    });
+
+    // نحافظ على العناصر المنشورة/قيد النشر ولا نمس مسار النشر الناجح.
+    const protectedItems = queue.filter(q => ["published","publishing","waiting_publish","publish_check"].includes(q.status));
+    const future = buildSmartQueue(days);
+    const byId = new Map();
+    [...protectedItems, ...future].forEach(item => byId.set(String(item.id), item));
+    queue = Array.from(byId.values()).sort((a,b)=>new Date(a.scheduledAt || a.publishedAt || 0)-new Date(b.scheduledAt || b.publishedAt || 0));
 
     renderAll();
     persistAll();
     await syncQueueToServerNow();
     openTab("queue");
+    alert(`تم بناء جدولة ذكية لمدة ${days} يوم. عدد العناصر: ${queue.length}`);
   }
-
 
   function isAmbiguousPublishError(err) {
     const msg = String((err && err.message) || err || "").toLowerCase();
@@ -1698,7 +1859,7 @@ persistAll();
     $("queueList").innerHTML = header + (queue.length ? queue.map((q, i) => `
       <div class="queue-item status-${escapeHtml(q.status || "scheduled")}">
         <b>${escapeHtml(q.video || q.title || "فيديو")}</b>
-        <span class="muted">${escapeHtml(q.account || "")} · ${escapeHtml(q.market || "")} · ${escapeHtml(q.time || "")}</span>
+        <span class="muted">${escapeHtml(q.account || "")} · ${escapeHtml(q.market || "")} · ${escapeHtml(q.time || "")} · ${q.scheduledAt ? escapeHtml(new Date(q.scheduledAt).toLocaleDateString("ar")) : ""}</span>
         <p><strong>${escapeHtml(q.hook || "")}</strong></p>
         <p class="muted">${escapeHtml((q.caption || "").slice(0, 180))}${(q.caption || "").length > 180 ? "…" : ""}</p>
         <span class="warn">${escapeHtml(queueStatusLabel(q.status))}${q.error ? " — " + escapeHtml(String(q.error).slice(0, 120)) : ""}</span>
@@ -2038,10 +2199,28 @@ persistAll();
 
 
   function renderStats() {
+    const published = queue.filter(q => q.status === "published").length;
+    const now = Date.now();
+    const tomorrow = now + 24*60*60*1000;
+    const dueToday = queue.filter(q => {
+      const t = new Date(q.scheduledAt || 0).getTime();
+      return q.status === "scheduled" && t >= now && t <= tomorrow;
+    }).length;
     $("statVideos").textContent = videos.length;
     $("statAccounts").textContent = accounts.length;
     $("statQueue").textContent = queue.length;
+    if($("statPublished")) $("statPublished").textContent = published;
+    if($("statDue")) $("statDue").textContent = dueToday;
     $("autoState").textContent = autopilot ? "ON" : "OFF";
+    if($("engineHealth")) {
+      const activeAccounts = accounts.filter(a => a.official !== false).length;
+      const next = queue.filter(q => q.status === "scheduled").sort((a,b)=>new Date(a.scheduledAt)-new Date(b.scheduledAt))[0];
+      $("engineHealth").innerHTML = `
+        <span>الحسابات الفعالة: <b>${activeAccounts}</b></span>
+        <span>الفيديوهات الجاهزة: <b>${videos.filter(v=>publicVideoUrl(v)).length}</b></span>
+        <span>منع التكرار: <b>${settings.repeatCooldownDays || 21} يوم</b></span>
+        <span>النشر القادم: <b>${next ? new Date(next.scheduledAt).toLocaleString("ar") : "لا يوجد"}</b></span>`;
+    }
   }
 
   function renderAll() {
