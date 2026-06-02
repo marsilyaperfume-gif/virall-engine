@@ -98,55 +98,56 @@ async function loadQueueFromServer(){
 async function v32AutoPublishScheduler(){
   try{
     if(typeof queue === "undefined" || !Array.isArray(queue) || !queue.length) return;
+    if(typeof publishNowFromQueue !== "function") return;
 
     const now = new Date();
+    let changed = false;
 
     for(let i=0;i<queue.length;i++){
       const item = queue[i];
       if(!item) continue;
+      if(["published", "publishing", "failed", "deleted"].includes(item.status)) continue;
 
-      if(item.status === "published" || item.status === "publishing") continue;
+      const raw = item.scheduledAt || toServerScheduledAt(item.time || item.scheduledTime);
+      if(!raw) continue;
+      const dueAt = new Date(raw);
+      if(Number.isNaN(dueAt.getTime())) continue;
 
-      const timeStr = item.time || item.scheduledTime || "";
-      if(!timeStr) continue;
-
-      const parts = String(timeStr).match(/(\d{1,2})[:٫](\d{1,2})/);
-      if(!parts) continue;
-
-      const h = Number(parts[1]);
-      const m = Number(parts[2]);
-
-      const currentH = now.getHours();
-      const currentM = now.getMinutes();
-
-      if(currentH === h && currentM === m){
+      // This is the important fix: automatic publishing now behaves exactly like clicking
+      // the queue item's "نشر الآن" button when the scheduled time has passed.
+      if(dueAt.getTime() <= now.getTime()){
         item.status = "publishing";
-        try{
-          if(typeof persistAll === "function") persistAll();
-        }catch(e){}
+        item.updatedAt = new Date().toISOString();
+        changed = true;
+        try{ if(typeof persistAll === "function") persistAll(); }catch(e){}
+        try{ if(typeof syncQueueToServerNow === "function") await syncQueueToServerNow(); }catch(e){}
 
         try{
-          await publishNowFromQueue(i, { skipConfirm: true });
-          item.status = "published";
-          item.publishedAt = new Date().toISOString();
+          await publishNowFromQueue(i, { skipConfirm: true, silent: true, auto: true });
         }catch(err){
-          console.error(err);
+          console.error("Auto publish failed", err);
           item.status = "failed";
           item.error = err.message || String(err);
+          try{ if(typeof recordError === "function") recordError("فشل النشر التلقائي من المتصفح", err, { queueItem: item.id, video: item.video }); }catch(e){}
         }
 
         try{
           if(typeof persistAll === "function") persistAll();
+          if(typeof syncQueueToServerNow === "function") await syncQueueToServerNow();
           if(typeof renderAll === "function") renderAll();
         }catch(e){}
       }
     }
+
+    if(changed && typeof renderAll === "function") renderAll();
   }catch(err){
     console.error("Auto scheduler error", err);
   }
 }
 
-setInterval(v32AutoPublishScheduler, 30000);
+setInterval(v32AutoPublishScheduler, 15000);
+window.addEventListener("focus", v32AutoPublishScheduler);
+document.addEventListener("visibilitychange", () => { if(!document.hidden) v32AutoPublishScheduler(); });
 
 /* ===== End v32 ===== */
 
@@ -1385,41 +1386,37 @@ persistAll();
 
   async function publishNowFromQueue(index, options = {}) {
     const item = queue[index];
-    if (!item) return;
+    if (!item) throw new Error("عنصر الجدولة غير موجود");
 
-    const publishKey = "queue_" + (item.videoId || index);
+    const silent = !!options.silent;
+    const publishKey = "queue_" + (item.id || item.videoId || index);
     if(!acquirePublishLock(publishKey)){
-      return alert("هذا الفيديو قيد النشر بالفعل");
+      const msg = "هذا الفيديو قيد النشر بالفعل";
+      if(!silent) alert(msg);
+      throw new Error(msg);
     }
 
     const ok = options.skipConfirm ? true : confirm("هل تريد نشر هذا الفيديو الآن على الحساب المحدد؟");
-    if (!ok) { releasePublishLock(publishKey); return; }
+    if (!ok) { releasePublishLock(publishKey); return false; }
 
     const btns = document.querySelectorAll(`[data-publish-now="${index}"]`);
-    btns.forEach(b => {
-      b.disabled = true;
-      b.textContent = "جاري النشر...";
-    });
+    btns.forEach(b => { b.disabled = true; b.textContent = "جاري النشر..."; });
 
     try {
-      const account = accounts.find(a => a.name === item.account || a.user === item.account || a.id === item.accountId);
+      const account = accounts.find(a => a.name === item.account || a.user === item.account || a.id === item.accountId) || { id: item.accountId, name: item.account, official: true };
       const video = videos.find(v => v.name === item.video || v.id === item.videoId);
 
-      if (!account || !account.official) {
-        alert("هذا العنصر غير مربوط بحساب رسمي. اختر حساب Officially Connected.");
-        return;
-      }
+      if (!account || !account.id) throw new Error("لا يوجد حساب Instagram مرتبط لهذا العنصر.");
+      if (account.official === false) throw new Error("هذا العنصر غير مربوط بحساب رسمي. اختر حساب Officially Connected.");
 
       const videoUrl = item.videoUrl || publicVideoUrl(video);
-      if (!videoUrl) {
-        alert("لم يتم العثور على رابط الفيديو. أعد رفع الفيديو حتى يحصل على رابط Supabase عام ثم جرّب النشر.");
-        return;
-      }
+      if (!videoUrl) throw new Error("لم يتم العثور على رابط الفيديو. أعد رفع الفيديو حتى يحصل على رابط Supabase عام ثم جرّب النشر.");
+      if (String(videoUrl).startsWith("blob:")) throw new Error("النشر يحتاج رابط فيديو عام من Supabase/S3، وليس blob محلي.");
 
-      if (String(videoUrl).startsWith("blob:")) {
-        alert("النشر الآن يحتاج رابط فيديو عام من Storage مثل Supabase/S3. الفيديو الحالي موجود محلياً داخل المتصفح فقط.");
-        return;
-      }
+      item.status = "publishing";
+      item.updatedAt = new Date().toISOString();
+      persistAll();
+      renderAll();
 
       const res = await fetch((settings.backendUrl || "/.netlify/functions").replace(/\/$/, "") + "/publish-reel", {
         method: "POST",
@@ -1431,29 +1428,32 @@ persistAll();
         })
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "فشل النشر");
 
       item.status = "published";
       item.publishedAt = new Date().toISOString();
+      item.error = "";
+      item.result = data;
+      persistAll();
+      await syncQueueToServerNow();
       renderAll();
-persistAll();
-      alert("تم إرسال النشر إلى Instagram بنجاح.");
+      if(!silent) alert("تم إرسال النشر إلى Instagram بنجاح.");
+      return data;
     } catch (err) {
       console.error(err);
       item.status = "failed";
       item.error = err.message || String(err);
+      item.updatedAt = new Date().toISOString();
       persistAll();
+      await syncQueueToServerNow().catch(()=>{});
       renderAll();
-      recordError("فشل النشر اليدوي", err, { queueItem: item.id, video: item.video });
-      alert("فشل النشر الآن: " + (err.message || err));
+      recordError(options.auto ? "فشل النشر التلقائي" : "فشل النشر اليدوي", err, { queueItem: item.id, video: item.video });
+      if(!silent) alert("فشل النشر الآن: " + (err.message || err));
+      throw err;
     } finally {
       releasePublishLock(publishKey);
-
-      btns.forEach(b => {
-        b.disabled = false;
-        b.textContent = "نشر الآن";
-      });
+      btns.forEach(b => { b.disabled = false; b.textContent = "نشر الآن"; });
     }
   }
 

@@ -7,6 +7,3 @@
 
 [functions."scheduled-publisher"]
   schedule = "*/1 * * * *"
-
-[functions."cron-scheduler"]
-  schedule = "*/1 * * * *"
