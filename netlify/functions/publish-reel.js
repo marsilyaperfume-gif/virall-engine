@@ -67,32 +67,46 @@ async function publishWithRetry(instagramId, creationId, accessToken, opts = {})
   }));
 }
 
-async function publishDirect({ accountId, videoUrl, caption }, opts = {}) {
-  if (!accountId || !videoUrl) throw new Error("accountId and videoUrl are required");
-  if (String(videoUrl).startsWith("blob:")) throw new Error("Video URL is local blob, not public.");
-
+async function getInstagramAccount(accountId) {
   const store = blobStore("ig_accounts");
   const account = await store.get(accountId, { type: "json" });
   if (!account) throw new Error("Instagram account not found. أعد ربط الحساب من الموقع.");
-
   const accessToken = account.pageAccessToken;
   const instagramId = account.instagramId || account.id;
   if (!accessToken || !instagramId) throw new Error("Stored account is missing token or Instagram ID. أعد ربط الحساب.");
+  return { account, accessToken, instagramId };
+}
 
+async function createReelContainer({ accountId, videoUrl, caption }) {
+  if (!accountId || !videoUrl) throw new Error("accountId and videoUrl are required");
+  if (String(videoUrl).startsWith("blob:")) throw new Error("Video URL is local blob, not public.");
+  const { accessToken, instagramId } = await getInstagramAccount(accountId);
   const container = await graphPost(`${instagramId}/media`, {
     media_type: "REELS",
     video_url: videoUrl,
     caption: caption || "",
     access_token: accessToken
   });
-
   if (!container.id) throw new Error(JSON.stringify({ error: "No creation container ID returned", container }));
+  return { ok: true, containerId: container.id };
+}
 
-  const published = await publishWithRetry(instagramId, container.id, accessToken, opts);
-  return { ok: true, containerId: container.id, published };
+async function publishExistingContainer({ accountId, creationId }, opts = {}) {
+  if (!accountId || !creationId) throw new Error("accountId and creationId are required");
+  const { accessToken, instagramId } = await getInstagramAccount(accountId);
+  const published = await publishWithRetry(instagramId, creationId, accessToken, opts);
+  return { ok: true, containerId: creationId, published };
+}
+
+async function publishDirect({ accountId, videoUrl, caption }, opts = {}) {
+  const container = await createReelContainer({ accountId, videoUrl, caption });
+  const published = await publishExistingContainer({ accountId, creationId: container.containerId }, opts);
+  return { ok: true, containerId: container.containerId, published: published.published };
 }
 
 exports.publishDirect = publishDirect;
+exports.createReelContainer = createReelContainer;
+exports.publishExistingContainer = publishExistingContainer;
 
 exports.handler = async function(event) {
   if (event.httpMethod === "OPTIONS") return { statusCode: 204, headers: corsHeaders };

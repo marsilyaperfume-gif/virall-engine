@@ -1,9 +1,13 @@
-// Disabled in v44: scheduled-publisher is already scheduled from netlify.toml.
-// Keeping a second scheduled function caused duplicate/competing autopublish runs.
-exports.handler = async function() {
+const { schedule } = require("@netlify/functions");
+const scheduler = require("./scheduled-publisher.js");
+
+async function cronHandler() {
+  const out = await scheduler._coreRun("netlify-schedule-helper", { maxItems: 2 });
   return {
-    statusCode: 200,
+    statusCode: out.ok ? 200 : 500,
     headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
-    body: JSON.stringify({ ok: true, disabled: true, reason: "Use scheduled-publisher only" })
+    body: JSON.stringify(out, null, 2)
   };
-};
+}
+
+exports.handler = schedule("*/1 * * * *", cronHandler);

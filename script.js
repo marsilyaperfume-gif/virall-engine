@@ -116,7 +116,11 @@ async function v32AutoPublishScheduler(){
       // This is the important fix: automatic publishing now behaves exactly like clicking
       // the queue item's "نشر الآن" button when the scheduled time has passed.
       if(dueAt.getTime() <= now.getTime()){
+        item.status = "publishing";
+        item.updatedAt = new Date().toISOString();
         changed = true;
+        try{ if(typeof persistAll === "function") persistAll(); }catch(e){}
+        try{ if(typeof syncQueueToServerNow === "function") await syncQueueToServerNow(); }catch(e){}
 
         try{
           await publishNowFromQueue(i, { skipConfirm: true, silent: true, auto: true });
@@ -266,6 +270,122 @@ async function publishUploadedVideoNow(index){
   let diagnosticErrors = [];
 
   const APP_STORE_KEY = "marrsile_growth_engine_v18";
+
+
+  // ===== v45 REAL AUTOPUBLISH FIX =====
+  // The previous auto-publish helpers were outside this app scope, so they could not see
+  // the real local `queue` and `settings` variables. These scoped helpers are the ones
+  // used by persistAll(), buttons, and the browser auto scheduler.
+  let __serverQueueSyncTimerScoped = null;
+
+  function toServerScheduledAtScoped(timeStr){
+    const now = new Date();
+    const parts = String(timeStr || "").match(/(\d{1,2})[:٫](\d{1,2})/);
+    if(!parts) return "";
+    const d = new Date(now);
+    d.setHours(Number(parts[1]), Number(parts[2]), 0, 0);
+    if(d.getTime() <= now.getTime() - 60 * 1000){
+      d.setDate(d.getDate() + 1);
+    }
+    return d.toISOString();
+  }
+
+  function normalizeQueueItemForServer(item, index){
+    const id = item.id || `${item.accountId || item.account || "acc"}_${item.videoId || item.video || "video"}_${item.time || index}`;
+    return {
+      ...item,
+      id,
+      scheduledAt: item.scheduledAt || toServerScheduledAtScoped(item.time || item.scheduledTime),
+      status: item.status || "scheduled"
+    };
+  }
+
+  async function syncQueueToServerNow(){
+    try{
+      if(!Array.isArray(queue)) return;
+      const base = (settings.backendUrl || "/.netlify/functions").replace(/\/$/, "");
+      let serverQueue = [];
+      try{
+        const res = await fetch(base + "/queue", { cache: "no-store" });
+        const data = await res.json().catch(() => ({}));
+        if(res.ok && Array.isArray(data.queue)) serverQueue = data.queue;
+      }catch(e){}
+
+      const byId = new Map();
+      serverQueue.forEach(item => { if(item && item.id) byId.set(String(item.id), item); });
+
+      queue.forEach((item, index) => {
+        const normalized = normalizeQueueItemForServer(item, index);
+        const existing = byId.get(String(normalized.id));
+        if(existing && ["published", "publishing", "failed"].includes(existing.status)){
+          byId.set(String(normalized.id), { ...normalized, ...existing });
+        }else{
+          byId.set(String(normalized.id), { ...(existing || {}), ...normalized });
+        }
+      });
+
+      const payloadQueue = Array.from(byId.values()).filter(item => item && item.status !== "deleted");
+      const res = await fetch(base + "/queue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ queue: payloadQueue })
+      });
+      if(!res.ok){
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "فشل حفظ الجدولة على السيرفر");
+      }
+    }catch(err){
+      console.warn("Server queue sync failed", err);
+      try{ recordError("فشل مزامنة الجدولة مع السيرفر", err); }catch(e){}
+    }
+  }
+
+  function syncQueueToServerDebounced(){
+    clearTimeout(__serverQueueSyncTimerScoped);
+    __serverQueueSyncTimerScoped = setTimeout(syncQueueToServerNow, 800);
+  }
+
+  async function loadQueueFromServer(){
+    try{
+      const base = (settings.backendUrl || "/.netlify/functions").replace(/\/$/, "");
+      const res = await fetch(base + "/queue", { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if(res.ok && Array.isArray(data.queue)){
+        queue = data.queue;
+        renderAll();
+      }
+    }catch(err){
+      console.warn("Server queue load failed", err);
+    }
+  }
+
+  async function browserAutoPublishScheduler(){
+    try{
+      if(!Array.isArray(queue) || !queue.length) return;
+      const now = new Date();
+      for(let i = 0; i < queue.length; i++){
+        const item = queue[i];
+        if(!item || ["published", "publishing", "failed", "deleted"].includes(item.status)) continue;
+        const raw = item.scheduledAt || toServerScheduledAtScoped(item.time || item.scheduledTime);
+        if(!raw) continue;
+        const dueAt = new Date(raw);
+        if(Number.isNaN(dueAt.getTime()) || dueAt.getTime() > now.getTime()) continue;
+        await publishNowFromQueue(i, { skipConfirm: true, silent: true, auto: true });
+        break; // publish one item per tick to prevent duplicate/parallel attempts
+      }
+    }catch(err){
+      console.error("Auto scheduler error", err);
+      try{ recordError("فشل محرك النشر التلقائي داخل المتصفح", err); }catch(e){}
+    }
+  }
+
+  function startBrowserAutoPublisher(){
+    browserAutoPublishScheduler();
+    setInterval(browserAutoPublishScheduler, 15000);
+    window.addEventListener("focus", browserAutoPublishScheduler);
+    document.addEventListener("visibilitychange", () => { if(!document.hidden) browserAutoPublishScheduler(); });
+  }
+  // ===== END v45 REAL AUTOPUBLISH FIX =====
 
   function recordError(title, err, extra = {}) {
     const entry = {
@@ -1071,7 +1191,7 @@ ${rand(ctaList)}.`;
   function renderTimes() {
     $("timeList").innerHTML = settings.times.map((t, i) => `
       <div class="time-row">
-        <input type="time" value="${escapeHtml(t)}" data-time-index="${i}">
+        <input type="time" value="" data-time-index="${i}">
         <button data-remove-time="${i}">حذف</button>
       </div>
     `).join("");
@@ -1337,7 +1457,7 @@ persistAll();
     });
   }
 
-  function startAutopilot() {
+  async function startAutopilot() {
     readSettingsFromUI();
     applySettingsToAll();
 
@@ -1375,8 +1495,8 @@ persistAll();
     });
 
     renderAll();
-persistAll();
-    try { syncQueueToServerNow(); } catch(e) {}
+    persistAll();
+    await syncQueueToServerNow();
     openTab("queue");
   }
 
@@ -1920,6 +2040,7 @@ persistAll();
     hydrateAll();
     loadPublicConfig().catch(() => {});
     loadQueueFromServer();
+    startBrowserAutoPublisher();
     loadSettingsToUI();
     renderAll();
     if (new URLSearchParams(window.location.search).get("connected")) {

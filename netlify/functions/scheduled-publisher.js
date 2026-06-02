@@ -39,12 +39,6 @@ function scheduledDate(item) {
 function isDue(item, now) {
   if (!item || item.deleted) return false;
   if (["published", "deleted", "failed"].includes(item.status)) return false;
-  if (item.status === "publishing") {
-    const updated = item.updatedAt ? new Date(item.updatedAt) : null;
-    const isStale = !updated || Number.isNaN(updated.getTime()) || (now.getTime() - updated.getTime() > 10 * 60 * 1000);
-    if (!isStale) return false;
-    item.status = "scheduled";
-  }
   const d = scheduledDate(item);
   return !!d && d.getTime() <= now.getTime();
 }
@@ -73,7 +67,6 @@ async function coreRun(source = "scheduled", opts = {}) {
 
   const results = [];
   try {
-    const { publishDirect } = require("./publish-reel.js");
     const queue = await readQueue();
     let dueCount = 0;
     let processed = 0;
@@ -91,24 +84,36 @@ async function coreRun(source = "scheduled", opts = {}) {
       await writeQueue(queue);
 
       try {
-        const result = await publishDirect({
-          accountId: item.accountId,
-          videoUrl: item.videoUrl,
-          caption: itemCaption(item)
-        }, {
-          // Netlify scheduled functions are short-lived. Keep this under the function timeout
-          // and let the next cron tick retry if Instagram has not finished processing the video yet.
-          initialDelayMs: 8000,
-          attempts: 2,
-          retryDelayMs: 8000
-        });
+        const reel = require("./publish-reel.js");
+        let result;
 
-        item.status = "published";
-        item.publishedAt = new Date().toISOString();
-        item.result = result;
-        item.error = "";
-        item.nextAttemptAt = "";
-        results.push({ id: item.id, ok: true, status: "published", video: item.video, account: item.account });
+        // Netlify scheduled functions must finish quickly.
+        // Step 1 creates the Instagram media container. Step 2 publishes it on the next tick.
+        // This avoids the old 25s + retry loop that made autopublish fail silently.
+        if (!item.creationId) {
+          result = await reel.createReelContainer({
+            accountId: item.accountId,
+            videoUrl: item.videoUrl,
+            caption: itemCaption(item)
+          });
+          item.creationId = result.containerId;
+          item.status = "waiting_publish";
+          item.nextAttemptAt = new Date(Date.now() + 60 * 1000).toISOString();
+          item.error = "";
+          results.push({ id: item.id, ok: true, status: "waiting_publish", creationId: item.creationId, nextAttemptAt: item.nextAttemptAt });
+        } else {
+          result = await reel.publishExistingContainer({
+            accountId: item.accountId,
+            creationId: item.creationId
+          }, { initialDelayMs: 0, attempts: 1, retryDelayMs: 0 });
+
+          item.status = "published";
+          item.publishedAt = new Date().toISOString();
+          item.result = result;
+          item.error = "";
+          item.nextAttemptAt = "";
+          results.push({ id: item.id, ok: true, status: "published", video: item.video, account: item.account });
+        }
       } catch (err) {
         item.attempts = Number(item.attempts || 0) + 1;
         item.status = item.attempts >= 3 ? "failed" : "scheduled";
