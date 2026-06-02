@@ -116,11 +116,7 @@ async function v32AutoPublishScheduler(){
       // This is the important fix: automatic publishing now behaves exactly like clicking
       // the queue item's "نشر الآن" button when the scheduled time has passed.
       if(dueAt.getTime() <= now.getTime()){
-        item.status = "publishing";
-        item.updatedAt = new Date().toISOString();
         changed = true;
-        try{ if(typeof persistAll === "function") persistAll(); }catch(e){}
-        try{ if(typeof syncQueueToServerNow === "function") await syncQueueToServerNow(); }catch(e){}
 
         try{
           await publishNowFromQueue(i, { skipConfirm: true, silent: true, auto: true });
@@ -1075,7 +1071,7 @@ ${rand(ctaList)}.`;
   function renderTimes() {
     $("timeList").innerHTML = settings.times.map((t, i) => `
       <div class="time-row">
-        <input type="time" value="" data-time-index="${i}">
+        <input type="time" value="${escapeHtml(t)}" data-time-index="${i}">
         <button data-remove-time="${i}">حذف</button>
       </div>
     `).join("");
@@ -1380,6 +1376,7 @@ persistAll();
 
     renderAll();
 persistAll();
+    try { syncQueueToServerNow(); } catch(e) {}
     openTab("queue");
   }
 

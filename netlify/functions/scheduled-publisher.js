@@ -31,7 +31,7 @@ async function writeSchedulerLog(entry) {
 }
 
 function scheduledDate(item) {
-  const raw = item && (item.scheduledAt || item.nextAttemptAt);
+  const raw = item && (item.nextAttemptAt || item.scheduledAt);
   const d = raw ? new Date(raw) : null;
   return d && !Number.isNaN(d.getTime()) ? d : null;
 }
@@ -39,6 +39,12 @@ function scheduledDate(item) {
 function isDue(item, now) {
   if (!item || item.deleted) return false;
   if (["published", "deleted", "failed"].includes(item.status)) return false;
+  if (item.status === "publishing") {
+    const updated = item.updatedAt ? new Date(item.updatedAt) : null;
+    const isStale = !updated || Number.isNaN(updated.getTime()) || (now.getTime() - updated.getTime() > 10 * 60 * 1000);
+    if (!isStale) return false;
+    item.status = "scheduled";
+  }
   const d = scheduledDate(item);
   return !!d && d.getTime() <= now.getTime();
 }
@@ -90,9 +96,11 @@ async function coreRun(source = "scheduled", opts = {}) {
           videoUrl: item.videoUrl,
           caption: itemCaption(item)
         }, {
-          initialDelayMs: 25000,
-          attempts: 12,
-          retryDelayMs: 15000
+          // Netlify scheduled functions are short-lived. Keep this under the function timeout
+          // and let the next cron tick retry if Instagram has not finished processing the video yet.
+          initialDelayMs: 8000,
+          attempts: 2,
+          retryDelayMs: 8000
         });
 
         item.status = "published";
