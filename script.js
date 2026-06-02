@@ -57,7 +57,7 @@ async function syncQueueToServerNow(){
         scheduledAt: item.scheduledAt || toServerScheduledAt(item.time || item.scheduledTime),
         status: item.status || "scheduled"
       };
-      if(existing && ["published", "publishing", "failed"].includes(existing.status)){
+      if(existing && ["published", "publishing", "failed", "waiting_publish", "publish_check"].includes(existing.status)){
         byId.set(String(id), { ...normalized, ...existing });
       } else {
         byId.set(String(id), { ...(existing || {}), ...normalized });
@@ -106,7 +106,7 @@ async function v32AutoPublishScheduler(){
     for(let i=0;i<queue.length;i++){
       const item = queue[i];
       if(!item) continue;
-      if(["published", "publishing", "failed", "deleted"].includes(item.status)) continue;
+      if(["published", "publishing", "failed", "deleted", "waiting_publish", "publish_check"].includes(item.status)) continue;
 
       const raw = item.scheduledAt || toServerScheduledAt(item.time || item.scheduledTime);
       if(!raw) continue;
@@ -317,7 +317,7 @@ async function publishUploadedVideoNow(index){
       queue.forEach((item, index) => {
         const normalized = normalizeQueueItemForServer(item, index);
         const existing = byId.get(String(normalized.id));
-        if(existing && ["published", "publishing", "failed"].includes(existing.status)){
+        if(existing && ["published", "publishing", "failed", "waiting_publish", "publish_check"].includes(existing.status)){
           byId.set(String(normalized.id), { ...normalized, ...existing });
         }else{
           byId.set(String(normalized.id), { ...(existing || {}), ...normalized });
@@ -365,7 +365,7 @@ async function publishUploadedVideoNow(index){
       const now = new Date();
       for(let i = 0; i < queue.length; i++){
         const item = queue[i];
-        if(!item || ["published", "publishing", "failed", "deleted"].includes(item.status)) continue;
+        if(!item || ["published", "publishing", "failed", "deleted", "waiting_publish", "publish_check"].includes(item.status)) continue;
         const raw = item.scheduledAt || toServerScheduledAtScoped(item.time || item.scheduledTime);
         if(!raw) continue;
         const dueAt = new Date(raw);
@@ -1501,6 +1501,21 @@ persistAll();
   }
 
 
+  function isAmbiguousPublishError(err) {
+    const msg = String((err && err.message) || err || "").toLowerCase();
+    return msg.includes("failed to fetch") ||
+      msg.includes("networkerror") ||
+      msg.includes("timeout") ||
+      msg.includes("timed out") ||
+      msg.includes("body stream") ||
+      msg.includes("instagram video is still not ready") ||
+      msg.includes("media id is not available") ||
+      msg.includes("processing") ||
+      msg.includes("not ready") ||
+      msg.includes("9007") ||
+      msg.includes("2207027");
+  }
+
   async function publishNowFromQueue(index, options = {}) {
     const item = queue[index];
     if (!item) throw new Error("عنصر الجدولة غير موجود");
@@ -1559,6 +1574,22 @@ persistAll();
       return data;
     } catch (err) {
       console.error(err);
+
+      // بعض حالات Instagram/Netlify تكون "نجاح فعلي" لكن الرد يرجع متأخر أو ناقص،
+      // فيظهر داخل الجدولة كفشل رغم أن الريل نُشر على الحساب. لذلك لا نضع Failed
+      // في النشر التلقائي عند الأخطاء الرمادية، بل نضع حالة انتظار تأكيد.
+      if (options.auto && isAmbiguousPublishError(err)) {
+        item.status = "publish_check";
+        item.error = "تم إرسال النشر إلى Instagram، بانتظار تأكيد الحالة. إذا ظهر الريل في الحساب فاعتبره ناجحاً.";
+        item.nextAttemptAt = "";
+        item.updatedAt = new Date().toISOString();
+        persistAll();
+        await syncQueueToServerNow().catch(()=>{});
+        renderAll();
+        try { recordError("تنبيه غير حاسم بعد النشر التلقائي", err, { queueItem: item.id, video: item.video, note: "Instagram may have published successfully" }); } catch(e) {}
+        return { ok: true, pendingConfirmation: true, warning: err.message || String(err) };
+      }
+
       item.status = "failed";
       item.error = err.message || String(err);
       item.updatedAt = new Date().toISOString();
@@ -1652,7 +1683,7 @@ persistAll();
   }
 
   function queueStatusLabel(status) {
-    const map = { scheduled: "مجدول", publishing: "جاري النشر", published: "تم النشر", failed: "فشل", deleted: "محذوف" };
+    const map = { scheduled: "مجدول", publishing: "جاري النشر", waiting_publish: "بانتظار تأكيد Instagram", publish_check: "تم الإرسال - تحقق", published: "تم النشر", failed: "فشل", deleted: "محذوف" };
     return map[status] || status || "مجدول";
   }
 

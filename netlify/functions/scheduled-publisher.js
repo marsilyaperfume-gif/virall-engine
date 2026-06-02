@@ -116,9 +116,12 @@ async function coreRun(source = "scheduled", opts = {}) {
         }
       } catch (err) {
         item.attempts = Number(item.attempts || 0) + 1;
-        item.status = item.attempts >= 3 ? "failed" : "scheduled";
-        item.error = err.message || String(err);
-        item.nextAttemptAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+        const emsg = err.message || String(err);
+        const lower = String(emsg).toLowerCase();
+        const notReady = lower.includes("media id is not available") || lower.includes("not ready") || lower.includes("processing") || lower.includes("9007") || lower.includes("2207027");
+        item.status = notReady ? "waiting_publish" : (item.attempts >= 6 ? "failed" : "scheduled");
+        item.error = notReady ? "Instagram ما زال يجهز الفيديو؛ سيتم التحقق مرة أخرى تلقائياً." : emsg;
+        item.nextAttemptAt = new Date(Date.now() + (notReady ? 2 : 5) * 60 * 1000).toISOString();
         results.push({ id: item.id, ok: false, status: item.status, error: item.error, nextAttemptAt: item.nextAttemptAt });
       }
 
