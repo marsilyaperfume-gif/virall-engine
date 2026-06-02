@@ -1079,6 +1079,8 @@ let __serverStateSyncTimerScoped = null;
 
       video.status = "تم إرسال النشر";
       video.postedTo = [...(video.postedTo || []), account.user || account.name];
+      video.publishedAt = new Date().toISOString();
+      video.publishedCount = Number(video.publishedCount || 0) + 1;
       persistAll();
       renderAll();
       alert("تم إرسال الفيديو إلى Instagram للنشر.");
@@ -1170,7 +1172,22 @@ let __serverStateSyncTimerScoped = null;
     "خلّك مختلف بريحتك",
     "العطر اللي يعلق بالمخ",
     "إذا فاتك… راحت عليك",
-    "خذ الفخامة بسعر ذكي"
+    "خذ الفخامة بسعر ذكي",
+    "لو ريحتك تهمك… لا تفوّت هذا",
+    "العطر اللي يعطيك حضور بدون كلام",
+    "أول رشة وتفهم الفخامة",
+    "ريحة مرتبة كأنها توقيعك",
+    "هذا العطر يصلح لكل يوم وكل مناسبة",
+    "فخم بطريقة هادئة وواضحة",
+    "لو تحب الثبات والنظافة… ركّز",
+    "عطر يخلي الإطلالة تكمل",
+    "من العطور اللي تنسأل عنها كثير",
+    "ريحته أرقى من سعره بكثير",
+    "اختيار ذكي لمحبي الفخامة",
+    "هذا العطر يعطي انطباع مختلف",
+    "ريحة نظيفة وثابتة وتناسب الخليج",
+    "الفخامة مو لازم تكون غالية",
+    "العطر اللي يخلي حضورك محفوظ"
   ];
 
   const captionOpeners = [
@@ -1238,6 +1255,8 @@ let __serverStateSyncTimerScoped = null;
     $("loginBtn").addEventListener("click", login);
     $("uploadBtn").addEventListener("click", pickVideos);
     if ($("uploadBtn2")) $("uploadBtn2").addEventListener("click", pickVideos);
+    if ($("deleteAllVideosBtn")) $("deleteAllVideosBtn").addEventListener("click", deleteAllVideos);
+    if ($("refreshPublishedBtn")) $("refreshPublishedBtn").addEventListener("click", () => { renderPublishedVideos(); renderStats(); });
     $("videoInput").addEventListener("change", addVideos);
     $("dropZone").addEventListener("click", pickVideos);
     $("dropZone").addEventListener("dragover", (e) => { e.preventDefault(); $("dropZone").classList.add("drag"); });
@@ -1368,6 +1387,7 @@ let __serverStateSyncTimerScoped = null;
       dashboard: "الرئيسية",
       control: "Control Center",
       videos: "الفيديوهات",
+      published: "الفيديوهات المنشورة",
       accounts: "الحسابات",
       hooks: "مصنع الهوكات",
       queue: "Autopilot Queue",
@@ -1518,7 +1538,14 @@ let __serverStateSyncTimerScoped = null;
       "الريحة اللي تخلي حضورك واضح بدون مبالغة",
       "سعره شيء… وريحته شيء ثاني تماماً",
       "هذا مو إعلان عطر، هذه تجربة لازم تعرفها",
-      "إذا سألوك وش حاط… لا تقول ما حذرتك 😭"
+      "إذا سألوك وش حاط… لا تقول ما حذرتك 😭",
+      "هذا من العطور اللي تخلّي الناس تسأل بدون ما تنتبه",
+      "ريحة نظيفة وفخمة وتناسب كل طلعة",
+      "لو تبغى عطر يبان راقي بدون مبالغة، هذا خيار قوي",
+      "من أول رشة يعطيك إحساس مرتب وغالي",
+      "النوع اللي يخليك تثبته ضمن مجموعتك",
+      "عطر يخلي اللوك كامل حتى قبل ما تطلع",
+      "الفخامة هنا مو بس بالريحة… حتى بالسعر"
     ];
     const ctas = {
       bio: ["شوف التشكيلة من الرابط في البايو", "الرابط في البايو لو تبغى تشوف السعر", "اطلبه من الرابط في البايو قبل ما تخلص الكمية"],
@@ -1577,7 +1604,14 @@ ${rand(sensory)}.
 ${offerLine}
 
 ${rand(ctaList)}.`;
-    const templates = [story, story, question, direct, girls, shortHook];
+    const luxury = () => `${rand(viralHooks)}
+
+لو ذوقك يميل للفخامة النظيفة، هذا العطر يعطيك حضور مرتب بدون إزعاج.
+
+${rand(sensory)}.
+
+${rand(ctaList)} — ${settings.captionFooter || "توصيل سريع · دفع عند الاستلام"}`;
+    const templates = [story, story, question, direct, girls, shortHook, luxury, luxury];
     const base = rand(templates)();
     return clean([base, settings.captionFooter ? "\n\n" + settings.captionFooter : "", settings.hashtags ? "\n\n" + settings.hashtags : ""]);
   }
@@ -1634,8 +1668,10 @@ ${rand(ctaList)}.`;
   }
 
   function setPreviewHook(hook) {
-    $("heroHook").textContent = hook;
-    $("settingsHook").textContent = hook;
+    const hero = $("heroHook");
+    const settingsEl = $("settingsHook");
+    if (hero) hero.textContent = hook || "";
+    if (settingsEl) settingsEl.textContent = hook || "";
     applyLook();
   }
 
@@ -1695,20 +1731,78 @@ ${rand(ctaList)}.`;
     });
   }
 
+
+  function videoWasPublished(v) {
+    if (!v) return false;
+    if (Array.isArray(v.postedTo) && v.postedTo.length > 0) return true;
+    const key = normalizeVideoKey(v);
+    return Array.isArray(queue) && queue.some(q => q && q.status === "published" && (queueItemVideoKey(q) === String(key) || q.video === v.name));
+  }
+
+  function publishedVideoMeta(v) {
+    const key = normalizeVideoKey(v);
+    const related = (queue || []).filter(q => q && q.status === "published" && (queueItemVideoKey(q) === String(key) || q.video === v.name));
+    const last = related.sort((a,b)=>new Date(b.publishedAt || 0)-new Date(a.publishedAt || 0))[0];
+    return {
+      count: Math.max((v.postedTo || []).length, related.length),
+      lastAt: last && last.publishedAt ? new Date(last.publishedAt).toLocaleString("ar") : "—",
+      accounts: [...new Set([...(v.postedTo || []), ...related.map(q => q.account).filter(Boolean)])]
+    };
+  }
+
+  function deleteAllVideos() {
+    if (!videos.length) return alert("لا توجد فيديوهات لحذفها");
+    const ok = confirm("سيتم حذف كل الفيديوهات من الموقع وحذف أي عناصر Queue مرتبطة بها. الربط والنشر لن يتأثرا. هل أنت متأكد؟");
+    if (!ok) return;
+    videos.forEach(v => { try { if (v.url && String(v.url).startsWith("blob:")) URL.revokeObjectURL(v.url); } catch(_) {} });
+    const names = new Set(videos.map(v => v.name));
+    const ids = new Set(videos.map(v => String(v.id || "")));
+    videos = [];
+    queue = (queue || []).filter(q => !names.has(q.video) && !ids.has(String(q.videoId || "")));
+    selected = 0;
+    const editor = $("editorVideo");
+    if (editor) { try { editor.pause(); } catch(_) {} editor.removeAttribute("src"); editor.style.display = "none"; editor.load(); }
+    if ($("videoHook")) $("videoHook").value = "";
+    if ($("videoCaption")) $("videoCaption").value = "";
+    persistAll();
+    syncQueueToServerNow({ replace: true }).catch(()=>{});
+    renderAll();
+    alert("تم حذف كل الفيديوهات والجدولة المرتبطة بها.");
+  }
+
+  function renderPublishedVideos() {
+    const el = $("publishedVideosList");
+    if (!el) return;
+    const published = videos.filter(videoWasPublished);
+    el.innerHTML = published.length ? published.map((v, index) => {
+      const meta = publishedVideoMeta(v);
+      return `<div class="video-item published-video">
+        <video src="${escapeHtml(publicVideoUrl(v) || v.url || "")}" muted playsinline preload="metadata"></video>
+        <div><b>${escapeHtml(v.name)}</b><span>نُشر ${meta.count} مرة · آخر نشر: ${escapeHtml(meta.lastAt)}</span><small class="muted">${escapeHtml(meta.accounts.join(" · ") || "لا توجد حسابات محفوظة")}</small></div>
+        <span class="ok">${v.topPerformer || v.success ? "ناجح للتدوير" : "منشور"}</span>
+      </div>`;
+    }).join("") : `<div class="video-item">لم يتم نشر أي فيديو بعد.</div>`;
+  }
+
   function renderVideos() {
-    $("videoList").innerHTML = videos.length ? videos.map((v, i) => `
-      <div class="video-item ${i === selected ? "active" : ""}" data-video-index="${i}">
-        <b>${escapeHtml(v.name)}</b>
-        <p>${escapeHtml(v.hook)}</p>
-        <span class="muted">${v.status}</span>
-        <div class="video-controls">
-          <button class="publish-now-btn" data-publish-video="${i}" type="button">نشر الآن</button>
-          <button class="schedule-now-btn" data-schedule-video="${i}" type="button">جدولة</button>
-          <button class="delete-video-btn" data-delete-video="${i}" type="button">حذف الفيديو</button>
+    const availableVideos = videos.filter(v => !videoWasPublished(v));
+    if (selected >= videos.length) selected = Math.max(0, videos.length - 1);
+    const list = $("videoList");
+    if (!list) return;
+    list.innerHTML = availableVideos.length ? availableVideos.map((v) => {
+      const index = videos.indexOf(v);
+      return `
+      <div class="video-item ${selected === index ? "active" : ""}" data-video-index="${index}">
+        <video src="${escapeHtml(publicVideoUrl(v) || v.url || "")}" muted playsinline preload="metadata"></video>
+        <div><b>${escapeHtml(v.name)}</b><span>${fmtBytes(v.size || 0)} · ${escapeHtml(v.status || "جاهز")}</span><small class="muted">Score ${Number(v.score || 50)} · ${v.uploadedToSupabase ? "Supabase" : "محلي"}</small></div>
+        <div class="video-actions">
+          <button data-publish-video="${index}" type="button">نشر الآن</button>
+          <button data-schedule-video="${index}" type="button">جدولة</button>
+          <button data-delete-video="${index}" type="button">حذف</button>
         </div>
         <span class="compat ${v.compatibility === "compatible" ? "ok" : v.compatibility === "needs_repair" ? "warn" : v.compatibility === "fixed" ? "ok" : "bad"}">${escapeHtml(v.compatibilityLabel || "قيد الفحص")}</span>${v.repairReason ? `<small class="muted">${escapeHtml(v.repairReason)}</small>` : ""}
-      </div>
-    `).join("") : `<div class="video-item">ارفع الفيديوهات فقط، والباقي تلقائي.</div>`;
+      </div>`;
+    }).join("") : `<div class="video-item">لا توجد فيديوهات غير منشورة. ارفع فيديوهات جديدة أو راجع قسم الفيديوهات المنشورة.</div>`;
 
     document.querySelectorAll("[data-video-index]").forEach(item => {
       item.addEventListener("click", (e) => {
@@ -1718,27 +1812,10 @@ ${rand(ctaList)}.`;
         loadEditor();
       });
     });
-
-    document.querySelectorAll("[data-delete-video]").forEach(btn => {
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        deleteVideo(Number(btn.dataset.deleteVideo));
-      });
-    });
-
-    document.querySelectorAll("[data-publish-video]").forEach(btn => {
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        publishVideoNow(Number(btn.dataset.publishVideo));
-      });
-    });
-
-    document.querySelectorAll("[data-schedule-video]").forEach(btn => {
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        scheduleVideoNow(Number(btn.dataset.scheduleVideo));
-      });
-    });
+    document.querySelectorAll("[data-delete-video]").forEach(btn => btn.addEventListener("click", (e) => { e.stopPropagation(); deleteVideo(Number(btn.dataset.deleteVideo)); }));
+    document.querySelectorAll("[data-publish-video]").forEach(btn => btn.addEventListener("click", (e) => { e.stopPropagation(); publishVideoNow(Number(btn.dataset.publishVideo)); }));
+    document.querySelectorAll("[data-schedule-video]").forEach(btn => btn.addEventListener("click", (e) => { e.stopPropagation(); scheduleVideoNow(Number(btn.dataset.scheduleVideo)); }));
+    renderPublishedVideos();
   }
 
 
@@ -1787,8 +1864,9 @@ persistAll();
 
     ["heroVideo","settingsVideo"].forEach(id => {
       const vid = $(id);
+      if (!vid) return;
       vid.src = v.url;
-      vid.style.display = "block";
+      if (id !== "heroVideo") vid.style.display = "block";
       vid.play().catch(() => {});
     });
 
@@ -2049,6 +2127,8 @@ persistAll();
         video.success = true;
         video.score = Math.max(Number(video.score || 50), 75);
         video.postedTo = [...(video.postedTo || []), account.name || account.user || item.account];
+        video.publishedAt = item.publishedAt;
+        video.publishedCount = Number(video.publishedCount || 0) + 1;
       }
       ensureRollingQueue(2);
       persistAll();
@@ -2210,7 +2290,9 @@ persistAll();
   }
 
   function renderHookFactory() {
-    $("hookFactory").innerHTML = gulfHooks.map(h => `<div class="hook-item">${escapeHtml(h)}</div>`).join("");
+    const hooksHtml = gulfHooks.map(h => `<div class="hook-item"><b>هوك</b><span>${escapeHtml(h)}</span></div>`).join("");
+    const captionsHtml = captionOpeners.concat(captionCTAs).map(h => `<div class="hook-item caption-bank"><b>كابشن</b><span>${escapeHtml(h)}</span></div>`).join("");
+    $("hookFactory").innerHTML = hooksHtml + captionsHtml;
   }
 
 
@@ -2547,6 +2629,16 @@ persistAll();
     if($("controlAutoState")) $("controlAutoState").textContent = autopilot ? "ON" : "OFF";
     if($("controlQueueCount")) $("controlQueueCount").textContent = queue.length;
     if($("controlVideoCount")) $("controlVideoCount").textContent = videos.length;
+    const publishedVideosCount = videos.filter(videoWasPublished).length;
+    const activeVideosCount = Math.max(0, videos.length - publishedVideosCount);
+    const todayKey = dateKeyFromDate(new Date());
+    const publishedToday = queue.filter(q => q.status === "published" && dateKeyFromDate(new Date(q.publishedAt || q.scheduledAt || 0)) === todayKey).length;
+    const failedToday = queue.filter(q => q.status === "failed" && dateKeyFromDate(new Date(q.updatedAt || q.scheduledAt || 0)) === todayKey).length;
+    if($("dashActiveVideos")) $("dashActiveVideos").textContent = activeVideosCount;
+    if($("dashPublishedVideos")) $("dashPublishedVideos").textContent = publishedVideosCount;
+    if($("dashPublishedToday")) $("dashPublishedToday").textContent = publishedToday;
+    if($("dashFailedToday")) $("dashFailedToday").textContent = failedToday;
+    if($("dashNextPublish")) $("dashNextPublish").textContent = next ? new Date(next.scheduledAt).toLocaleString("ar", {hour:"2-digit", minute:"2-digit", day:"2-digit", month:"2-digit"}) : "لا يوجد";
   }
 
   function renderAll() {
@@ -2554,6 +2646,7 @@ persistAll();
     renderVideos();
     renderAccounts();
     renderQueue();
+    renderPublishedVideos();
     renderHookFactory();
     applyLook();
   }

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Marrsile Growth Engine v47</title>
+<title>Marrsile Growth Engine v56</title>
 <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
@@ -12,7 +12,7 @@
 <section id="loginScreen" class="login">
   <div class="login-card">
     <div class="mark">M</div>
-    <h1>MARRSILE <span>GROWTH ENGINE V47</span></h1>
+    <h1>MARRSILE <span>GROWTH ENGINE V56</span></h1>
     <p>منصة نشر تلقائي ذكية تعمل 24/7 مع رفع جماعي وجدولة ذكية.</p>
     <input id="email" placeholder="Email"/>
     <input id="password" placeholder="Password" type="password"/>
@@ -29,6 +29,7 @@
     <button class="nav active" data-tab="dashboard">الرئيسية</button>
     <button class="nav" data-tab="control">Control Center</button>
     <button class="nav" data-tab="videos">الفيديوهات</button>
+    <button class="nav" data-tab="published">الفيديوهات المنشورة</button>
     <button class="nav" data-tab="accounts">الحسابات</button>
     <button class="nav" data-tab="hooks">مصنع الكابشن</button>
     <button class="nav" data-tab="queue">Autopilot Queue</button>
@@ -52,7 +53,7 @@
     <section id="dashboard" class="tab">
       <div class="hero card">
         <div>
-          <span class="pill">v47 Smart 24/7</span>
+          <span class="pill">v56 Analytics Publisher</span>
           <h1>Growth Engine للنشر التلقائي</h1>
           <p>رفع جماعي ذكي، جدولة يومية، منع تكرار، ونشر تلقائي للفيديو الأصلي بدون كتابة فوقه.</p>
           <div class="actions">
@@ -60,11 +61,18 @@
             <button class="secondary" data-open="control">تعديل الإعدادات</button>
           </div>
         </div>
-        <div class="phone">
-          <video id="heroVideo" muted loop playsinline></video>
-          <div id="heroHook" class="hook hook-disabled" aria-hidden="true"></div>
-          <div class="ig">♥ 48.2K · 💬 1,240 · ↗ 8,910</div>
-          
+        <div class="dashboard-insight">
+          <video id="heroVideo" muted loop playsinline style="display:none"></video>
+          <div id="heroHook" class="hook hook-disabled" aria-hidden="true" style="display:none"></div>
+          <div class="insight-card big"><span>النشر القادم</span><b id="dashNextPublish">—</b></div>
+          <div class="insight-row">
+            <div class="insight-card"><span>منشور اليوم</span><b id="dashPublishedToday">0</b></div>
+            <div class="insight-card"><span>فشل اليوم</span><b id="dashFailedToday">0</b></div>
+          </div>
+          <div class="insight-row">
+            <div class="insight-card"><span>فيديوهات نشطة</span><b id="dashActiveVideos">0</b></div>
+            <div class="insight-card"><span>منشورة</span><b id="dashPublishedVideos">0</b></div>
+          </div>
         </div>
       </div>
 
@@ -81,6 +89,19 @@
         <div id="engineHealth" class="engine-health">جاري قراءة البيانات...</div>
       </div>
     </section>
+
+    <section id="published" class="tab hidden">
+      <div class="toolbar card">
+        <div>
+          <h3>الفيديوهات المنشورة</h3>
+          <p>أي فيديو يتم نشره بنجاح يظهر هنا، ويبقى متاحًا للتدوير الذكي إذا كان ناجحًا.</p>
+        </div>
+        <button class="secondary" id="refreshPublishedBtn" type="button">تحديث القائمة</button>
+      </div>
+      <div id="publishedVideosList" class="video-list published-list"></div>
+    </section>
+
+    <section id="analytics" class="tab hidden"></section>
 
     <section id="control" class="tab hidden">
       <div class="section-head">
@@ -247,11 +268,12 @@
       <div class="toolbar card">
         <div>
           <h3>الفيديوهات</h3>
-          <p>بعد الرفع، يتم توليد هوك وكابشن تلقائياً لكل فيديو.</p>
+          <p>هذه قائمة الفيديوهات غير المنشورة بعد. بعد نجاح النشر ينتقل الفيديو تلقائياً لقسم الفيديوهات المنشورة.</p>
         </div>
         <div class="actions">
           <button class="primary" id="uploadBtn2">رفع فيديوهات</button>
-          <button class="secondary" id="applyAllBtn">تطبيق الإعدادات على الكل</button>
+          <button class="secondary" id="applyAllBtn">تطبيق الكابشنات على الكل</button>
+          <button class="danger" id="deleteAllVideosBtn" type="button">حذف كل الفيديوهات</button>
         </div>
       </div>
 
@@ -261,9 +283,9 @@
         </div>
         <div class="card editor">
           <video id="editorVideo" controls playsinline></video>
-          <label>الهوك الحالي</label>
-          <textarea id="videoHook"></textarea>
-          <label>الكابشن الحالي</label>
+          <label>عنوان/هوك الكابشن</label>
+          <textarea id="videoHook" placeholder="هذا النص يستخدم داخل الكابشن فقط، لا يُكتب فوق الفيديو"></textarea>
+          <label>وصف الكابشن الحالي</label>
           <textarea id="videoCaption"></textarea>
           <button class="secondary full" id="regenSelectedBtn">توليد جديد لهذا الفيديو</button>
         </div>
@@ -297,9 +319,9 @@
 
     <section id="hooks" class="tab hidden">
       <div class="card">
-        <h3>بنك الهوكات المعتمدة</h3>
-        <p>هذه هي نفس الـ 50 هوك المعتمدة بدون تعديل أو إضافة.</p>
-        <button class="primary" id="factoryBtn">عرض الـ 50 هوك المعتمدة</button>
+        <h3>بنك هوكات الكابشن</h3>
+        <p>هذه العبارات تُستخدم داخل وصف الريلز والكابشن، وليس ككتابة على الفيديو.</p>
+        <button class="primary" id="factoryBtn">عرض الهوكات والكابشنات</button>
       </div>
       <div id="hookFactory" class="factory"></div>
     </section>
