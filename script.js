@@ -1426,6 +1426,7 @@ let __serverStateSyncTimerScoped = null;
       published: "الفيديوهات المنشورة",
       accounts: "الحسابات",
       hooks: "مصنع الكابشن",
+      telegram: "Telegram Uploads",
       queue: "Autopilot Queue",
       settings: "النظام",
       errors: "الأخطاء"
@@ -2726,6 +2727,49 @@ persistAll();
     if($("dashNextPublish")) $("dashNextPublish").textContent = next ? new Date(next.scheduledAt).toLocaleString("ar", {hour:"2-digit", minute:"2-digit", day:"2-digit", month:"2-digit"}) : "لا يوجد";
   }
 
+  async function setupTelegramWebhook() {
+    const status = $("telegramStatus");
+    if (status) status.textContent = "جاري ربط Webhook مع Telegram...";
+    try {
+      const base = (settings.backendUrl || "/.netlify/functions").replace(/\/$/, "");
+      const res = await fetch(base + "/setup-telegram-webhook", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.ok === false) throw new Error(data.error || (data.telegram && data.telegram.description) || "فشل الربط");
+      if (status) status.textContent = "تم ربط Telegram Webhook بنجاح ✅";
+      alert("تم ربط البوت بالموقع بنجاح");
+    } catch (err) {
+      if (status) status.textContent = "فشل ربط Webhook: " + (err.message || String(err));
+      recordError("فشل ربط Telegram Webhook", err, {});
+      alert("فشل ربط Telegram Webhook: " + (err.message || String(err)));
+    }
+  }
+
+  async function renderTelegramUploads() {
+    const el = $("telegramUploadsList");
+    if (!el) return;
+    try {
+      const base = (settings.backendUrl || "/.netlify/functions").replace(/\/$/, "");
+      const res = await fetch(base + "/telegram-uploads", { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      const uploads = Array.isArray(data.uploads) ? data.uploads : [];
+      if (!uploads.length) {
+        el.innerHTML = `<div class="empty-state">لا توجد فيديوهات مستلمة من تلجرام بعد.</div>`;
+        return;
+      }
+      el.innerHTML = uploads.slice(0, 30).map(u => {
+        const ok = u.ok ? "✅" : "❌";
+        const at = u.at ? new Date(u.at).toLocaleString("ar") : "—";
+        const size = u.size ? fmtBytes(u.size) : "";
+        return `<div class="telegram-upload-row ${u.ok ? "ok" : "bad"}">
+          <div><b>${ok} ${escapeHtml(u.fileName || "video")}</b><span>${escapeHtml(at)} ${size ? "· " + escapeHtml(size) : ""}</span></div>
+          <p>${escapeHtml(u.error || u.stage || "uploaded")}</p>
+        </div>`;
+      }).join("");
+    } catch (err) {
+      el.innerHTML = `<div class="empty-state">تعذر قراءة سجل تلجرام: ${escapeHtml(err.message || String(err))}</div>`;
+    }
+  }
+
   function renderAll() {
     renderStats();
     renderVideos();
@@ -2733,6 +2777,7 @@ persistAll();
     renderQueue();
     renderPublishedVideos();
     renderHookFactory();
+    renderTelegramUploads();
     applyLook();
   }
 
@@ -2757,6 +2802,8 @@ persistAll();
     startBrowserAutoPublisher();
     loadSettingsToUI();
     renderAll();
+    const tgSetup = $("setupTelegramBtn"); if (tgSetup) tgSetup.addEventListener("click", setupTelegramWebhook);
+    const tgRefresh = $("refreshTelegramBtn"); if (tgRefresh) tgRefresh.addEventListener("click", renderTelegramUploads);
     if (new URLSearchParams(window.location.search).get("connected")) {
       loadOfficialAccounts();
       history.replaceState({}, "", window.location.pathname);

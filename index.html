@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Marrsile Growth Engine v56</title>
+<title>Marrsile Growth Engine v60</title>
 <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
@@ -12,7 +12,7 @@
 <section id="loginScreen" class="login">
   <div class="login-card">
     <div class="mark">M</div>
-    <h1>MARRSILE <span>GROWTH ENGINE V56</span></h1>
+    <h1>MARRSILE <span>GROWTH ENGINE V60</span></h1>
     <p>منصة نشر تلقائي ذكية تعمل 24/7 مع رفع جماعي وجدولة ذكية.</p>
     <input id="email" placeholder="Email"/>
     <input id="password" placeholder="Password" type="password"/>
@@ -32,6 +32,7 @@
     <button class="nav" data-tab="published">الفيديوهات المنشورة</button>
     <button class="nav" data-tab="accounts">الحسابات</button>
     <button class="nav" data-tab="hooks">مصنع الكابشن</button>
+    <button class="nav" data-tab="telegram">Telegram Uploads</button>
     <button class="nav" data-tab="queue">Autopilot Queue</button>
     <button class="nav" data-tab="settings">النظام</button>
     <button class="nav" data-tab="errors">الأخطاء</button>
@@ -53,7 +54,7 @@
     <section id="dashboard" class="tab">
       <div class="hero card">
         <div>
-          <span class="pill">v56 Analytics Publisher</span>
+          <span class="pill">v60 Telegram Uploads</span>
           <h1>Growth Engine للنشر التلقائي</h1>
           <p>رفع جماعي ذكي، جدولة يومية، منع تكرار، ونشر تلقائي للفيديو الأصلي بدون كتابة فوقه.</p>
           <div class="actions">
@@ -335,6 +336,36 @@
         <div><b>GCC</b><span>لهجة خليجية</span></div>
       </div>
       <div id="hookFactory" class="factory caption-factory"></div>
+    </section>
+
+
+    <section id="telegram" class="tab hidden">
+      <div class="toolbar card">
+        <div>
+          <h3>Telegram Uploads</h3>
+          <p>أرسل فيديو MP4 إلى بوت تلجرام، وسيتم رفعه تلقائيًا إلى مكتبة الفيديوهات والجدولة القادمة. هذا القسم لا يغيّر ربط Instagram أو محرك النشر.</p>
+        </div>
+        <div class="actions">
+          <button class="primary" id="setupTelegramBtn" type="button">ربط Webhook</button>
+          <button class="secondary" id="refreshTelegramBtn" type="button">تحديث الحالة</button>
+        </div>
+      </div>
+      <div class="telegram-grid">
+        <div class="card telegram-card">
+          <h3>طريقة الاستخدام</h3>
+          <ol class="simple-list numbered">
+            <li>افتح بوت <b>@Reels_Virall_Bot</b></li>
+            <li>أرسل الفيديو كـ Video أو File</li>
+            <li>انتظر رسالة نجاح الرفع</li>
+            <li>سيظهر الفيديو في قسم الفيديوهات ويدخل الجدولة تلقائيًا</li>
+          </ol>
+          <div id="telegramStatus" class="status-box">جاهز للربط بعد نشر هذه النسخة على Netlify.</div>
+        </div>
+        <div class="card telegram-card">
+          <h3>آخر الفيديوهات من تلجرام</h3>
+          <div id="telegramUploadsList" class="telegram-list empty-state">لا توجد بيانات بعد.</div>
+        </div>
+      </div>
     </section>
 
     <section id="queue" class="tab hidden">
