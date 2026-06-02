@@ -325,3 +325,18 @@ aside{background:rgba(4,9,20,.72);backdrop-filter:blur(18px);-webkit-backdrop-fi
 .danger{border:0;border-radius:17px;padding:14px 20px;color:#fff;font-weight:900;cursor:pointer;background:linear-gradient(135deg,#ff3d68,#9d1234)}
 @media(max-width:1200px){.stats.stats6,.engine-health{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:720px){.stats.stats6,.engine-health{grid-template-columns:1fr}.section-head,.upload-meta{display:block}}
+
+/* v48: Publisher-only Control Center. Hook overlay/editor is intentionally disabled. */
+.hook-disabled,
+.legacy-hook-config{
+  display:none !important;
+}
+.section-head h2{margin:0;font-size:34px;color:#fff}
+.publisher-control .card{min-height:unset}
+.status-grid.mini{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:18px 0}
+.status-grid.mini div{background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.09);border-radius:16px;padding:14px;text-align:center}
+.status-grid.mini b{display:block;font-size:22px;color:#fff}
+.status-grid.mini span{font-size:12px;color:#9fb0c9}
+.clean-checks{display:grid;gap:12px;margin-top:14px}
+.clean-checks label{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:12px 14px;color:#dbe7fb}
+.muted{color:#9fb0c9;line-height:1.8;margin:8px 0 12px}

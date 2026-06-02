@@ -53,8 +53,8 @@
       <div class="hero card">
         <div>
           <span class="pill">v47 Smart 24/7</span>
-          <h1>Growth Engine للنشر التلقائي الذكي</h1>
-          <p>واجهة جديدة، رفع جماعي مع متابعة التقدم، وجدولة يومية ذكية تمنع تكرار الفيديو وتعيد استخدام المحتوى الناجح فقط.</p>
+          <h1>Growth Engine للنشر التلقائي</h1>
+          <p>رفع جماعي ذكي، جدولة يومية، منع تكرار، ونشر تلقائي للفيديو الأصلي بدون كتابة فوقه.</p>
           <div class="actions">
             <button class="primary" id="startAutoBtn">تشغيل Autopilot</button>
             <button class="secondary" data-open="control">تعديل الإعدادات</button>
@@ -62,7 +62,7 @@
         </div>
         <div class="phone">
           <video id="heroVideo" muted loop playsinline></video>
-          <div id="heroHook" class="hook">لا تدفع سعر الوكيل قبل ما تشوف هذا العطر</div>
+          <div id="heroHook" class="hook hook-disabled" aria-hidden="true"></div>
           <div class="ig">♥ 48.2K · 💬 1,240 · ↗ 8,910</div>
           
         </div>
@@ -83,121 +83,29 @@
     </section>
 
     <section id="control" class="tab hidden">
-      <div class="control-grid">
-        <div class="card">
-          <h3>1) إعداد الهوك</h3>
-          <label>نمط الهوك</label>
-          <select id="hookType">
-            <option value="infinite">لا نهائي ذكي</option>
-            <option value="sales">مبيعات قوي</option>
-            <option value="curiosity">فضول</option>
-            <option value="price">صدمة سعر</option>
-            <option value="luxury">فخامة</option>
-            <option value="problem">حل مشكلة</option>
-            <option value="social">إثبات اجتماعي</option>
-            <option value="urgency">ندرة</option>
-          </select>
-
-          <label>قوة الهوك</label>
-          <select id="hookPower">
-            <option value="high">قوي</option>
-            <option value="aggressive">هجومي مبيعات</option>
-            <option value="premium">راقي وفاخر</option>
-            <option value="short">قصير جداً</option>
-          </select>
-
-          <label>إيموجي</label>
-          <select id="emojiMode">
-            <option value="balanced">متوازن</option>
-            <option value="none">بدون</option>
-            <option value="strong">قوي</option>
-          </select>
-
-          <label>طول الهوك</label>
-          <select id="hookLength">
-            <option value="oneLine">سطر واحد</option>
-            <option value="twoLines">سطرين</option>
-          </select>
-
-          <button class="primary full" id="demoHookBtn">توليد هوك الآن</button>
+      <div class="section-head">
+        <div>
+          <h2>Control Center</h2>
+          <p>إعدادات النشر التلقائي فقط — بدون معاينة هوك فوق الفيديو لأن الفيديو يُنشر كما هو.</p>
         </div>
-
-        <div class="card">
-          <h3>2) شكل الهوك فوق الفيديو</h3>
-          <label>ستايل</label>
-          <select id="hookStyle">
-            <option value="bold">أسود قوي</option>
-            <option value="luxury">ذهبي فاخر</option>
-            <option value="clean">أبيض نظيف</option>
-            <option value="red">أحمر عروض</option>
-            <option value="glass">زجاجي عصري</option>
-          </select>
-
-          <label>حجم الخط <span id="fontValue">36px</span></label>
-          <input id="fontSize" type="range" min="22" max="72" value="36"/>
-
-          <label>مكان الهوك <span id="topValue">58px</span></label>
-          <input id="hookTop" type="range" min="10" max="240" value="58"/>
-
-          <label>عرض صندوق النص <span id="widthValue">88%</span></label>
-          <input id="boxWidth" type="range" min="60" max="96" value="88"/>
-
-          <label>شفافية الخلفية <span id="opacityValue">82%</span></label>
-          <input id="hookOpacity" type="range" min="15" max="98" value="82"/>
-
-          <label>استدارة الحواف <span id="radiusValue">17px</span></label>
-          <input id="hookRadius" type="range" min="0" max="32" value="17"/>
-        </div>
-
-        <div class="card preview-card">
-          <h3>معاينة مباشرة</h3>
-          <div class="phone large">
-            <video id="settingsVideo" muted loop playsinline></video>
-            <div id="settingsHook" class="hook">لا تدفع سعر الوكيل قبل ما تشوف هذا العطر</div>
-          </div>
-
-          <div class="video-controls">
-            <button class="secondary" id="previewPlayBtn" type="button">تشغيل</button>
-            <button class="secondary" id="previewBackBtn" type="button">-5 ثواني</button>
-            <button class="secondary" id="previewForwardBtn" type="button">+5 ثواني</button>
-            <button class="secondary" id="previewMuteBtn" type="button">تشغيل الصوت</button>
-          </div>
-          <input id="previewSeek" class="seek" type="range" min="0" max="100" value="0"/>
-          <div class="time-readout"><span id="previewCurrent">00:00</span><span id="previewDuration">00:00</span></div>
-
-          <button class="secondary full" id="saveControlBtn">حفظ الإعدادات</button>
-        </div>
+        <span class="pill">Publisher Mode</span>
       </div>
 
-      <div class="control-grid">
-        <div class="card">
-          <h3>3) الكابشن والمبيعات</h3>
-          <label>نوع العرض</label>
-          <select id="offerType">
-            <option value="discount">خصومات قوية</option>
-            <option value="freeShipping">توصيل مجاني</option>
-            <option value="cod">دفع عند الاستلام</option>
-            <option value="bundle">اطلب أكثر ووفر</option>
-            <option value="premium">فخامة وسعر منافس</option>
-          </select>
-
-          <label>CTA</label>
-          <select id="ctaMode">
-            <option value="bio">اطلب من الرابط في البايو</option>
-            <option value="whatsapp">راسلنا واتساب</option>
-            <option value="limited">اطلب قبل نفاد الكمية</option>
-            <option value="shopNow">تسوق الآن</option>
-          </select>
-
-          <label>هاشتاقات</label>
-          <input id="hashtags" value="#عطور #Perfume #عطور_فاخرة"/>
-
-          <label>تذييل الكابشن</label>
-          <input id="captionFooter" value="توصيل سريع · دفع عند الاستلام"/>
+      <div class="control-grid publisher-control">
+        <div class="card engine-card">
+          <h3>1) محرك النشر</h3>
+          <p class="muted">هذه الإعدادات لا تغيّر ربط Instagram ولا دوال النشر الناجحة، فقط تتحكم بالجدولة والـ Queue.</p>
+          <div class="status-grid mini">
+            <div><b id="controlAutoState">OFF</b><span>Autopilot</span></div>
+            <div><b id="controlQueueCount">0</b><span>Queue</span></div>
+            <div><b id="controlVideoCount">0</b><span>Videos</span></div>
+          </div>
+          <button class="primary full" id="saveAndRunBtn">حفظ وتشغيل Autopilot</button>
+          <button class="secondary full" id="saveControlBtn">حفظ الإعدادات فقط</button>
         </div>
 
         <div class="card">
-          <h3>4) الجدول</h3>
+          <h3>2) الجدولة اليومية الذكية</h3>
           <label>عدد الفيديوهات يومياً لكل حساب</label>
           <div class="counter">
             <button id="dailyMinus">-</button>
@@ -217,27 +125,87 @@
             <option value="30-90">عشوائي 30 - 90 دقيقة</option>
             <option value="custom">مخصص</option>
           </select>
-
           <div class="delay-custom">
             <input id="delayMin" type="number" min="0" value="10" placeholder="أقل تأخير بالدقائق"/>
             <input id="delayMax" type="number" min="0" value="30" placeholder="أعلى تأخير بالدقائق"/>
           </div>
+        </div>
+
+        <div class="card">
+          <h3>3) منع التكرار وإعادة التدوير</h3>
           <label>عدد أيام الجدولة المسبقة</label>
           <input id="scheduleDays" type="number" min="7" max="90" value="30"/>
           <label>أقل مدة قبل تكرار نفس الفيديو على نفس الحساب</label>
           <input id="repeatCooldownDays" type="number" min="1" max="90" value="21"/>
+          <div class="check-list clean-checks">
+            <label><input id="avoidRepeat" type="checkbox" checked/> منع تكرار الفيديو على نفس الحساب</label>
+            <label><input id="smartRepost" type="checkbox" checked/> إعادة نشر الفيديوهات الناجحة فقط</label>
+            <label><input id="autoRetry" type="checkbox" checked/> إعادة المحاولة عند الفشل</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="control-grid publisher-control">
+        <div class="card">
+          <h3>4) الكابشن والهاشتاقات</h3>
+          <label>نوع العرض</label>
+          <select id="offerType">
+            <option value="discount">خصومات قوية</option>
+            <option value="freeShipping">توصيل مجاني</option>
+            <option value="cod">دفع عند الاستلام</option>
+            <option value="bundle">اطلب أكثر ووفر</option>
+            <option value="premium">فخامة وسعر منافس</option>
+          </select>
+          <label>CTA</label>
+          <select id="ctaMode">
+            <option value="bio">اطلب من الرابط في البايو</option>
+            <option value="whatsapp">راسلنا واتساب</option>
+            <option value="limited">اطلب قبل نفاد الكمية</option>
+            <option value="shopNow">تسوق الآن</option>
+          </select>
+          <label>هاشتاقات</label>
+          <input id="hashtags" value="#عطور #Perfume #عطور_فاخرة"/>
+          <label>تذييل الكابشن</label>
+          <input id="captionFooter" value="توصيل سريع · دفع عند الاستلام"/>
         </div>
 
         <div class="card">
           <h3>5) قواعد Autopilot</h3>
-          <label><input id="autoHook" type="checkbox" checked/> توليد هوك مختلف لكل فيديو</label>
-          <label><input id="autoCaption" type="checkbox" checked/> كابشن تلقائي حسب الحساب</label>
-          <label><input id="avoidRepeat" type="checkbox" checked/> منع تكرار الفيديو على نفس الحساب</label>
-          <label><input id="abTesting" type="checkbox" checked/> A/B Test تلقائي</label>
-          <label><input id="smartRepost" type="checkbox" checked/> إعادة نشر الفيديوهات الناجحة</label>
-          <label><input id="autoRetry" type="checkbox" checked/> إعادة المحاولة عند الفشل</label>
-          <button class="primary full" id="saveAndRunBtn">حفظ وتشغيل Autopilot</button>
+          <div class="check-list clean-checks">
+            <label><input id="autoCaption" type="checkbox" checked/> كابشن تلقائي حسب الحساب</label>
+            <label><input id="abTesting" type="checkbox" checked/> A/B Test للكابشنات</label>
+          </div>
+          <p class="muted">تم إيقاف عرض وإعدادات الهوك البصري بالكامل. سيتم النشر بنفس ملف الفيديو الأصلي بدون كتابة فوقه.</p>
         </div>
+
+        <div class="card">
+          <h3>6) ملخص التشغيل</h3>
+          <div id="engineHealthControl" class="engine-health">جاري قراءة حالة المحرك...</div>
+        </div>
+      </div>
+
+      <div class="legacy-hook-config" aria-hidden="true">
+        <select id="hookType"><option value="infinite">لا نهائي ذكي</option></select>
+        <select id="hookPower"><option value="high">قوي</option></select>
+        <select id="emojiMode"><option value="balanced">متوازن</option></select>
+        <select id="hookLength"><option value="oneLine">سطر واحد</option></select>
+        <select id="hookStyle"><option value="bold">أسود قوي</option></select>
+        <input id="fontSize" type="range" min="22" max="72" value="36"/>
+        <input id="hookTop" type="range" min="10" max="240" value="58"/>
+        <input id="boxWidth" type="range" min="60" max="96" value="88"/>
+        <input id="hookOpacity" type="range" min="15" max="98" value="82"/>
+        <input id="hookRadius" type="range" min="0" max="32" value="17"/>
+        <span id="fontValue">36px</span><span id="topValue">58px</span><span id="widthValue">88%</span><span id="opacityValue">82%</span><span id="radiusValue">17px</span>
+        <button id="demoHookBtn" type="button">demo</button>
+        <video id="settingsVideo" muted loop playsinline></video>
+        <div id="settingsHook" class="hook"></div>
+        <button id="previewPlayBtn" type="button">play</button>
+        <button id="previewBackBtn" type="button">back</button>
+        <button id="previewForwardBtn" type="button">forward</button>
+        <button id="previewMuteBtn" type="button">mute</button>
+        <input id="previewSeek" type="range" min="0" max="100" value="0"/>
+        <span id="previewCurrent">00:00</span><span id="previewDuration">00:00</span>
+        <label><input id="autoHook" type="checkbox"/> auto hook disabled</label>
       </div>
     </section>
 

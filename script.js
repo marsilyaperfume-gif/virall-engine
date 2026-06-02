@@ -672,60 +672,95 @@ async function publishUploadedVideoNow(index){
     return d;
   }
 
+  function uploadWithProgress(url, file, options = {}) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open(options.method || "PUT", url, true);
+      const headers = options.headers || {};
+      Object.keys(headers).forEach(k => xhr.setRequestHeader(k, headers[k]));
+      xhr.upload.onprogress = (ev) => {
+        if (ev.lengthComputable && typeof options.onProgress === "function") options.onProgress(ev.loaded, ev.total);
+      };
+      xhr.onload = () => resolve({ status: xhr.status, ok: xhr.status >= 200 && xhr.status < 300, text: xhr.responseText || "" });
+      xhr.onerror = () => reject(new Error("فشل اتصال الرفع المباشر مع Supabase."));
+      xhr.ontimeout = () => reject(new Error("انتهت مهلة رفع الفيديو."));
+      xhr.timeout = 10 * 60 * 1000;
+      xhr.send(options.body || file);
+    });
+  }
+
   async function uploadToCloudinary(file) {
-    // v38 clean: upload through a Netlify Function using Supabase Service Role.
-    // This bypasses browser RLS problems while keeping the secret key hidden on Netlify.
+    // v49: direct signed upload to Supabase.
+    // The Netlify Function now creates only a signed upload URL, so large videos do not pass through Netlify body limits.
     await loadPublicConfig();
 
-    if (!file || !file.size) {
-      throw new Error("ملف الفيديو غير صالح أو فارغ.");
-    }
+    if (!file || !file.size) throw new Error("ملف الفيديو غير صالح أو فارغ.");
 
-    const maxMB = 80;
+    const maxMB = 300;
     const sizeMB = file.size / 1024 / 1024;
-    if (sizeMB > maxMB) {
-      throw new Error(`حجم الفيديو ${sizeMB.toFixed(1)}MB كبير جداً لهذه النسخة. جرّب ضغطه أو استخدم فيديو أقل من ${maxMB}MB.`);
-    }
+    if (sizeMB > maxMB) throw new Error(`حجم الفيديو ${sizeMB.toFixed(1)}MB كبير جداً. استخدم فيديو أقل من ${maxMB}MB.`);
 
-    const toBase64 = (f) => new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(new Error("فشل قراءة ملف الفيديو من المتصفح."));
-      reader.onload = () => {
-        const result = String(reader.result || "");
-        const comma = result.indexOf(",");
-        resolve(comma >= 0 ? result.slice(comma + 1) : result);
-      };
-      reader.readAsDataURL(f);
-    });
-
-    const base64 = await toBase64(file);
-    const endpoint = "/.netlify/functions/upload-video";
-    const res = await fetch(endpoint, {
+    const createEndpoint = "/.netlify/functions/create-upload-url";
+    const signRes = await fetch(createEndpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        filename: file.name || "video.mp4",
-        contentType: file.type || "video/mp4",
-        base64
-      })
+      body: JSON.stringify({ filename: file.name || "video.mp4", contentType: file.type || "video/mp4", size: file.size || 0 })
     });
 
-    const text = await res.text().catch(() => "");
-    let data = {};
-    try { data = text ? JSON.parse(text) : {}; } catch(e) { data = { raw: text }; }
+    const signText = await signRes.text().catch(() => "");
+    let signData = {};
+    try { signData = signText ? JSON.parse(signText) : {}; } catch(e) { signData = { raw: signText }; }
 
-    if (!res.ok || !data.ok || !data.publicUrl) {
-      const msg = data.message || data.error || data.raw || `HTTP ${res.status}`;
-      const err = new Error("فشل رفع الفيديو عبر Netlify Function: " + msg);
-      recordError("Server Supabase Upload Failed", err, { status: res.status, endpoint, file: `${file.name} (${sizeMB.toFixed(2)}MB)`, details: data });
+    if (!signRes.ok || !signData.ok || (!signData.signedUrl && !signData.token)) {
+      const msg = signData.message || signData.error || signData.raw || `HTTP ${signRes.status}`;
+      const err = new Error("فشل إنشاء رابط الرفع المباشر: " + msg);
+      recordError("Supabase Signed URL Failed", err, { status: signRes.status, endpoint: createEndpoint, file: `${file.name} (${sizeMB.toFixed(2)}MB)`, details: signData });
       throw err;
     }
 
+    const signedUrl = signData.signedUrl;
+    let lastLoaded = 0;
+    const onProgress = (loaded, total) => {
+      const delta = Math.max(0, loaded - lastLoaded);
+      lastLoaded = loaded;
+      uploadState.bytesDone += delta;
+      renderUploadProgress();
+    };
+
+    let uploadRes;
+    try {
+      uploadRes = await uploadWithProgress(signedUrl, file, {
+        method: "PUT",
+        headers: { "Content-Type": file.type || "video/mp4", "x-upsert": "true" },
+        onProgress
+      });
+      if (!uploadRes.ok) {
+        const fd = new FormData();
+        fd.append("file", file, file.name || "video.mp4");
+        lastLoaded = 0;
+        uploadRes = await uploadWithProgress(signedUrl, file, { method: "POST", body: fd, onProgress });
+      }
+    } catch(err) {
+      recordError("Supabase Direct Upload Failed", err, { endpoint: signedUrl, file: `${file.name} (${sizeMB.toFixed(2)}MB)` });
+      throw err;
+    }
+
+    if (!uploadRes.ok) {
+      const err = new Error("فشل الرفع المباشر إلى Supabase: HTTP " + uploadRes.status + (uploadRes.text ? " - " + uploadRes.text.slice(0, 300) : ""));
+      recordError("Supabase Direct Upload Failed", err, { status: uploadRes.status, endpoint: signedUrl, file: `${file.name} (${sizeMB.toFixed(2)}MB)`, details: uploadRes.text });
+      throw err;
+    }
+
+    if (lastLoaded < file.size) {
+      uploadState.bytesDone += (file.size - lastLoaded);
+      renderUploadProgress();
+    }
+
     return {
-      url: data.publicUrl,
-      publicUrl: data.publicUrl,
-      cloudinaryPublicId: data.path,
-      supabasePath: data.path,
+      url: signData.publicUrl,
+      publicUrl: signData.publicUrl,
+      cloudinaryPublicId: signData.path,
+      supabasePath: signData.path,
       uploadedToSupabase: true,
       localOnly: false
     };
@@ -1130,12 +1165,11 @@ async function publishUploadedVideoNow(index){
           createdAt: new Date().toISOString()
         });
         uploadState.done++;
-        uploadState.bytesDone += file.size || 0;
         pushUploadRow(file, "تم الرفع ✅", 100, "جاهز للجدولة");
         persistAll();
       } catch (err) {
         uploadState.failed++;
-        uploadState.bytesDone += file.size || 0;
+        if (!uploaded) uploadState.bytesDone += file.size || 0;
         pushUploadRow(file, "فشل الرفع", 100, err.message || String(err));
         recordError("فشل رفع الفيديو من الواجهة", err, { file: file.name });
       }
@@ -2212,15 +2246,18 @@ persistAll();
     if($("statPublished")) $("statPublished").textContent = published;
     if($("statDue")) $("statDue").textContent = dueToday;
     $("autoState").textContent = autopilot ? "ON" : "OFF";
-    if($("engineHealth")) {
-      const activeAccounts = accounts.filter(a => a.official !== false).length;
-      const next = queue.filter(q => q.status === "scheduled").sort((a,b)=>new Date(a.scheduledAt)-new Date(b.scheduledAt))[0];
-      $("engineHealth").innerHTML = `
+    const activeAccounts = accounts.filter(a => a.official !== false).length;
+    const next = queue.filter(q => q.status === "scheduled").sort((a,b)=>new Date(a.scheduledAt)-new Date(b.scheduledAt))[0];
+    const healthHtml = `
         <span>الحسابات الفعالة: <b>${activeAccounts}</b></span>
         <span>الفيديوهات الجاهزة: <b>${videos.filter(v=>publicVideoUrl(v)).length}</b></span>
         <span>منع التكرار: <b>${settings.repeatCooldownDays || 21} يوم</b></span>
         <span>النشر القادم: <b>${next ? new Date(next.scheduledAt).toLocaleString("ar") : "لا يوجد"}</b></span>`;
-    }
+    if($("engineHealth")) $("engineHealth").innerHTML = healthHtml;
+    if($("engineHealthControl")) $("engineHealthControl").innerHTML = healthHtml;
+    if($("controlAutoState")) $("controlAutoState").textContent = autopilot ? "ON" : "OFF";
+    if($("controlQueueCount")) $("controlQueueCount").textContent = queue.length;
+    if($("controlVideoCount")) $("controlVideoCount").textContent = videos.length;
   }
 
   function renderAll() {
