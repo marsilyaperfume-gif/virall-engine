@@ -84,10 +84,19 @@ function scheduledDate(timeStr, dayOffset, accountIndex, slotIndex) {
   const d = new Date();
   d.setDate(d.getDate() + Number(dayOffset || 0));
   d.setHours(hh || 0, mm || 0, 0, 0);
-  // deterministic spread: لا تنشر كل الحسابات بنفس الدقيقة
-  d.setMinutes(d.getMinutes() + ((accountIndex * 11 + slotIndex * 7) % 37));
   if (d.getTime() < Date.now() + 2 * 60 * 1000) d.setDate(d.getDate() + 1);
   return d;
+}
+
+function minuteKey(date) {
+  return String(date.getHours()).padStart(2, "0") + ":" + String(date.getMinutes()).padStart(2, "0");
+}
+
+function slotKey(item) {
+  if (item && item.slotKey) return String(item.slotKey);
+  const d = new Date((item && (item.scheduledAt || item.publishedAt || item.createdAt)) || 0);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0,10) + "::" + minuteKey(d);
 }
 
 function hasDuplicate(queue, accKey, vidKey, date) {
@@ -95,6 +104,14 @@ function hasDuplicate(queue, accKey, vidKey, date) {
   return queue.some(q => {
     if (!q || ["deleted", "failed", "skipped"].includes(q.status)) return false;
     return itemAccountKey(q) === accKey && itemVideoKey(q) === vidKey && itemDay(q) === day;
+  });
+}
+
+function hasAccountSlot(queue, accKey, date) {
+  const sk = date.toISOString().slice(0,10) + "::" + minuteKey(date);
+  return queue.some(q => {
+    if (!q || ["deleted", "failed", "skipped"].includes(q.status)) return false;
+    return itemAccountKey(q) === accKey && slotKey(q) === sk;
   });
 }
 
@@ -147,13 +164,26 @@ function chooseVideo(videos, queue, account, targetDate, usedToday, planned, set
 }
 
 function dedupeQueue(queue) {
-  const seen = new Set();
+  const seenSlot = new Set();
+  const seenVideoDay = new Set();
   const out = [];
-  queue.sort((a,b)=>new Date(a.scheduledAt || a.publishedAt || 0)-new Date(b.scheduledAt || b.publishedAt || 0)).forEach(q => {
+  const priority = { publishing: 8, waiting_publish: 7, publish_check: 6, published: 5, scheduled: 4, failed: 2, skipped: 1 };
+  queue.sort((a,b)=>{
+    const at = new Date(a.scheduledAt || a.publishedAt || 0).getTime() || 0;
+    const bt = new Date(b.scheduledAt || b.publishedAt || 0).getTime() || 0;
+    if (at !== bt) return at - bt;
+    return (priority[b.status] || 0) - (priority[a.status] || 0);
+  }).forEach(q => {
     if (!q || q.status === "deleted") return;
-    const key = [itemAccountKey(q), itemVideoKey(q), itemDay(q), q.status || "scheduled"].join("::");
-    if (seen.has(key)) return;
-    seen.add(key);
+    const acc = itemAccountKey(q);
+    const vid = itemVideoKey(q);
+    const day = itemDay(q);
+    const sk = acc + "::" + slotKey(q);
+    const vdk = acc + "::" + vid + "::" + day;
+    if (seenSlot.has(sk)) return;
+    if (seenVideoDay.has(vdk)) return;
+    seenSlot.add(sk);
+    seenVideoDay.add(vdk);
     out.push(q);
   });
   return out;
@@ -167,11 +197,17 @@ async function refillRollingQueue(queue) {
   const accounts = (Array.isArray(state.accounts) ? state.accounts : []).filter(a => a && a.id && a.official !== false);
   if (!videos.length || !accounts.length) return { added: 0, reason: "missing_videos_or_accounts" };
 
-  const days = 3;
+  const days = 2;
   const daily = Math.max(1, Number(settings.daily || 3));
-  const times = Array.isArray(settings.times) && settings.times.length ? settings.times : ["08:00", "16:00", "00:00"];
+  const rawTimes = Array.isArray(settings.times) && settings.times.length ? settings.times : ["12:00", "16:00", "21:00"];
+  const times = [];
+  rawTimes.forEach(t => { t = String(t || "").trim(); if (/^\d{1,2}:\d{2}$/.test(t) && !times.includes(t)) times.push(t); });
+  const fallback = ["12:00", "16:00", "21:00", "08:00", "18:00", "22:00"];
+  while (times.length < daily) times.push(fallback[times.length % fallback.length]);
+  times.splice(daily);
+  queue.splice(0, queue.length, ...dedupeQueue(queue));
   const activeCount = queue.filter(q => q && !["published", "failed", "deleted", "skipped"].includes(q.status)).length;
-  const targetCount = days * daily * accounts.length;
+  const targetCount = days * times.length * accounts.length;
   if (activeCount >= targetCount) return { added: 0, activeCount, targetCount };
 
   const before = queue.length;
@@ -185,11 +221,14 @@ async function refillRollingQueue(queue) {
         if (!v) continue;
         const accKey = accountKey(acc);
         const vidKey = videoKey(v);
-        if (hasDuplicate(queue, accKey, vidKey, at) || usedToday.has(vidKey)) continue;
+        if (hasAccountSlot(queue, accKey, at) || hasDuplicate(queue, accKey, vidKey, at) || usedToday.has(vidKey)) continue;
         usedToday.add(vidKey); markPlanned(planned, accKey, vidKey, at);
         const stamp = at.toISOString();
+        const sk = at.toISOString().slice(0,10) + "::" + minuteKey(at);
         queue.push({
-          id: `${accKey}_${vidKey}_${stamp.slice(0,16)}`,
+          id: `${accKey}_${sk.replace(/[:]/g, "-")}`,
+          slotIndex: slot,
+          slotKey: sk,
           videoId: v.id,
           video: v.name,
           videoUrl: videoUrl(v),

@@ -329,7 +329,7 @@ let __serverStateSyncTimerScoped = null;
   function ensureRollingQueue(days = 3){
     if(!autopilot || !videos.length || !accounts.length) return false;
     cleanupQueueForAutopilot();
-    const target = Math.max(1, Number(settings.daily || 3)) * Math.max(1, accounts.length) * Number(days || 3);
+    const target = normalizeConfiguredTimes().length * Math.max(1, accounts.length) * Number(days || 3);
     if(activeQueueCount() >= target) return false;
     const future = buildSmartQueue(days);
     const before = queue.length;
@@ -361,16 +361,18 @@ let __serverStateSyncTimerScoped = null;
     };
   }
 
-  async function syncQueueToServerNow(){
+  async function syncQueueToServerNow(options = {}){
     try{
       if(!Array.isArray(queue)) return;
       const base = (settings.backendUrl || "/.netlify/functions").replace(/\/$/, "");
       let serverQueue = [];
-      try{
-        const res = await fetch(base + "/queue", { cache: "no-store" });
-        const data = await res.json().catch(() => ({}));
-        if(res.ok && Array.isArray(data.queue)) serverQueue = data.queue;
-      }catch(e){}
+      if(!options.replace){
+        try{
+          const res = await fetch(base + "/queue", { cache: "no-store" });
+          const data = await res.json().catch(() => ({}));
+          if(res.ok && Array.isArray(data.queue)) serverQueue = data.queue;
+        }catch(e){}
+      }
 
       const byId = new Map();
       serverQueue.forEach(item => { if(item && item.id) byId.set(String(item.id), item); });
@@ -674,14 +676,47 @@ let __serverStateSyncTimerScoped = null;
     return String(account && (account.id || account.name || account.user || account.username) || "");
   }
 
-  function sameVideoAccountInQueue(videoKey, accountKey, scheduledAt){
-    const day = new Date(scheduledAt);
-    const ymd = Number.isNaN(day.getTime()) ? "" : day.toISOString().slice(0,10);
+  function dateKeyFromDate(d){
+    return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0,10);
+  }
+
+  function minuteKeyFromDate(d){
+    if(Number.isNaN(d.getTime())) return "";
+    return String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0");
+  }
+
+  function slotKeyForItem(item){
+    if(!item) return "";
+    if(item.slotKey) return String(item.slotKey);
+    const d = new Date(item.scheduledAt || item.publishedAt || item.createdAt || 0);
+    return dateKeyFromDate(d) + "::" + minuteKeyFromDate(d);
+  }
+
+  function normalizeConfiguredTimes(){
+    const raw = Array.isArray(settings.times) ? settings.times : [];
+    const cleaned = raw.map(t => String(t || "").trim()).filter(t => /^\d{1,2}:\d{2}$/.test(t));
+    const unique = [];
+    cleaned.forEach(t => { if(!unique.includes(t)) unique.push(t); });
+    const daily = Math.max(1, Number(settings.daily || 3));
+    const fallback = ["12:00", "16:00", "21:00", "08:00", "18:00", "22:00"];
+    while(unique.length < daily) unique.push(fallback[unique.length % fallback.length]);
+    return unique.slice(0, daily);
+  }
+
+  function hasAccountSlotInQueue(accountKey, scheduledAt){
+    const slotKey = dateKeyFromDate(scheduledAt) + "::" + minuteKeyFromDate(scheduledAt);
     return queue.some(q => {
-      if(["deleted","skipped","failed"].includes(q.status)) return false;
-      const qDay = new Date(q.scheduledAt || q.publishedAt || q.createdAt || 0);
-      const qYmd = Number.isNaN(qDay.getTime()) ? "" : qDay.toISOString().slice(0,10);
-      return queueItemVideoKey(q) === String(videoKey) && queueItemAccountKey(q) === String(accountKey) && qYmd === ymd;
+      if(!q || ["deleted","failed","skipped"].includes(q.status)) return false;
+      return queueItemAccountKey(q) === String(accountKey) && slotKeyForItem(q) === slotKey;
+    });
+  }
+
+  function sameVideoAccountInQueue(videoKey, accountKey, scheduledAt){
+    const day = dateKeyFromDate(scheduledAt);
+    return queue.some(q => {
+      if(!q || ["deleted","skipped","failed"].includes(q.status)) return false;
+      const qDay = dateKeyFromDate(new Date(q.scheduledAt || q.publishedAt || q.createdAt || 0));
+      return queueItemVideoKey(q) === String(videoKey) && queueItemAccountKey(q) === String(accountKey) && qDay === day;
     });
   }
 
@@ -726,13 +761,11 @@ let __serverStateSyncTimerScoped = null;
     const targetDate = new Date(Date.now() + dayIndex * 86400000);
     const usable = videos.filter(v => publicVideoUrl(v) && !String(publicVideoUrl(v)).startsWith("blob:") && !usedToday.has(normalizeVideoKey(v)));
 
-    // المرحلة الأولى: استهلاك كل الفيديوهات المخزنة مرة واحدة لكل حساب قبل أي إعادة تدوير.
     const neverUsedForThisAccount = usable.filter(v => !hasUsedBeforeForAccount(v, account, plannedMap));
     if(neverUsedForThisAccount.length){
-      return neverUsedForThisAccount[(dayIndex * Number(settings.daily || 3) + slotIndex) % neverUsedForThisAccount.length];
+      return neverUsedForThisAccount[(dayIndex * Math.max(1, Number(settings.daily || 3)) + slotIndex) % neverUsedForThisAccount.length];
     }
 
-    // المرحلة الثانية: بعد انتهاء كل الفيديوهات، نعيد تدوير الناجح فقط وبفاصل منع تكرار.
     const winners = usable.filter(v => {
       const score = videoScore(v);
       const isWinner = v.topPerformer === true || v.success === true || score >= Number(settings.minimumRecycleScore || 70);
@@ -740,7 +773,6 @@ let __serverStateSyncTimerScoped = null;
     });
     if(winners.length) return winners.sort((a,b)=>videoScore(b)-videoScore(a))[slotIndex % winners.length];
 
-    // لا نكرر فيديو عادي إذا لم ينجح.
     return null;
   }
 
@@ -750,26 +782,32 @@ let __serverStateSyncTimerScoped = null;
     const out = [];
     const plannedMap = new Map();
     const now = new Date();
-    const baseTimes = Array.isArray(settings.times) && settings.times.length ? settings.times : ["08:00","16:00","00:00"];
-    const perDay = Math.max(1, Number(settings.daily || baseTimes.length || 3));
+    const baseTimes = normalizeConfiguredTimes();
+    const perDay = baseTimes.length;
+
     for(let d=0; d<days; d++){
       usableAccounts.forEach((a, accountIndex) => {
         const usedToday = new Set();
         for(let slot=0; slot<perDay; slot++){
+          const scheduled = scheduledDateForDay(baseTimes[slot], d, 0);
+          if(scheduled.getTime() < now.getTime() + 2*60000) scheduled.setDate(scheduled.getDate()+1);
+          const accKey = normalizeAccountKey(a);
+
+          // قاعدة ذهبية: الحساب الواحد له Job واحد فقط لكل وقت نشر.
+          if(hasAccountSlotInQueue(accKey, scheduled) || out.some(x => queueItemAccountKey(x) === accKey && slotKeyForItem(x) === (dateKeyFromDate(scheduled) + "::" + minuteKeyFromDate(scheduled)))) continue;
+
           const v = chooseSmartVideo(a, d, slot + accountIndex, usedToday, plannedMap);
           if(!v) continue;
-          const time = baseTimes[slot % baseTimes.length] || "08:00";
-          const delay = randomDelayMinutes(accountIndex + slot);
-          const scheduled = scheduledDateForDay(time, d, delay);
-          if(scheduled.getTime() < now.getTime() + 2*60000) scheduled.setDate(scheduled.getDate()+1);
           const vidKey = normalizeVideoKey(v);
-          const accKey = normalizeAccountKey(a);
           if(sameVideoAccountInQueue(vidKey, accKey, scheduled) || usedToday.has(vidKey)) continue;
+
           usedToday.add(vidKey);
           markPlanned(plannedMap, v, a, scheduled);
           const stamp = scheduled.toISOString();
           out.push({
-            id: `${accKey}_${vidKey}_${stamp.slice(0,16)}`,
+            id: `${accKey}_${dateKeyFromDate(scheduled)}_${minuteKeyFromDate(scheduled)}`,
+            slotIndex: slot,
+            slotKey: dateKeyFromDate(scheduled) + "::" + minuteKeyFromDate(scheduled),
             videoId: v.id,
             video: v.name,
             videoUrl: publicVideoUrl(v),
@@ -793,9 +831,10 @@ let __serverStateSyncTimerScoped = null;
   }
 
   function dedupeQueueItems(items){
-    const seen = new Set();
+    const seenSlot = new Set();
+    const seenVideoDay = new Set();
     const out = [];
-    const priority = { publishing: 7, waiting_publish: 6, publish_check: 5, published: 4, scheduled: 3, failed: 2, skipped: 1 };
+    const priority = { publishing: 8, waiting_publish: 7, publish_check: 6, published: 5, scheduled: 4, failed: 2, skipped: 1 };
     [...items].sort((a,b)=>{
       const at = new Date(a.scheduledAt || a.publishedAt || 0).getTime() || 0;
       const bt = new Date(b.scheduledAt || b.publishedAt || 0).getTime() || 0;
@@ -803,11 +842,20 @@ let __serverStateSyncTimerScoped = null;
       return (priority[b.status] || 0) - (priority[a.status] || 0);
     }).forEach(item => {
       if(!item || item.status === "deleted") return;
+      const acc = queueItemAccountKey(item);
+      const vid = queueItemVideoKey(item);
       const d = new Date(item.scheduledAt || item.publishedAt || item.createdAt || 0);
-      const day = Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0,10);
-      const key = [queueItemAccountKey(item), queueItemVideoKey(item), day].join("::");
-      if(seen.has(key)) return;
-      seen.add(key);
+      const day = dateKeyFromDate(d);
+      const slotKey = acc + "::" + slotKeyForItem(item);
+      const videoDayKey = acc + "::" + vid + "::" + day;
+
+      // لا نسمح بأكثر من Job واحد لنفس الحساب في نفس وقت النشر.
+      if(seenSlot.has(slotKey)) return;
+      // ولا نسمح بتكرار نفس الفيديو على نفس الحساب في نفس اليوم.
+      if(seenVideoDay.has(videoDayKey)) return;
+
+      seenSlot.add(slotKey);
+      seenVideoDay.add(videoDayKey);
       out.push(item);
     });
     return out;
@@ -1829,20 +1877,20 @@ persistAll();
       return;
     }
 
-    // v51: Rolling Queue حقيقي. نبقي فقط 3 أيام أمامية حتى لا تكبر الجدولة،
-    // والسيرفر يعرف حالة الفيديوهات والحسابات ليعيد التعبئة تلقائياً عند الحاجة.
-    const days = 3;
+    // v53: عند تشغيل Autopilot نعيد بناء الجدولة النشطة من الصفر.
+    // نحافظ فقط على العناصر التي هي قيد النشر/بانتظار تأكيد حتى لا نكسر نشر بدأ فعلاً.
+    const days = 2;
     autopilot = true;
 
-    const protectedItems = queue.filter(q => ["published","publishing","waiting_publish","publish_check"].includes(q.status));
+    const protectedItems = queue.filter(q => ["publishing","waiting_publish","publish_check"].includes(q.status));
     queue = dedupeQueueItems(protectedItems);
     ensureRollingQueue(days);
 
     renderAll();
     persistAll();
-    await syncQueueToServerNow();
+    await syncQueueToServerNow({ replace: true });
     openTab("queue");
-    alert(`تم تشغيل الجدولة الذكية: 3 فيديو يومياً لكل حساب. الجدولة الأمامية الآن: ${activeQueueCount()} عنصر، ويتم تجديدها تلقائياً.`);
+    alert(`تم بناء جدول نظيف: ${normalizeConfiguredTimes().length} فيديو يومياً لكل حساب، وكل وقت يحتوي فيديو واحد فقط لكل حساب.`);
   }
 
   function isAmbiguousPublishError(err) {
@@ -1921,7 +1969,7 @@ persistAll();
         video.score = Math.max(Number(video.score || 50), 75);
         video.postedTo = [...(video.postedTo || []), account.name || account.user || item.account];
       }
-      ensureRollingQueue(3);
+      ensureRollingQueue(2);
       persistAll();
       await syncQueueToServerNow();
       renderAll();
