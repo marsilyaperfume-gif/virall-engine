@@ -785,15 +785,37 @@ let __serverStateSyncTimerScoped = null;
     const baseTimes = normalizeConfiguredTimes();
     const perDay = baseTimes.length;
 
+    // v54: نحسب تأخير الحسابات داخل بناء الجدولة نفسه، وليس عند النشر.
+    // هذا يجعل Queue تعرض الأوقات الحقيقية مثل 12:00، 12:17، 12:41...
+    const accountOffsetsByDaySlot = new Map();
+    function getAccountOffset(dayIndex, slotIndex, accountIndex){
+      const key = dayIndex + "::" + slotIndex;
+      if(!accountOffsetsByDaySlot.has(key)){
+        const offsets = [];
+        let cumulative = 0;
+        for(let i=0; i<usableAccounts.length; i++){
+          if(i === 0){
+            offsets.push(0);
+            continue;
+          }
+          const seed = `${dateKeyFromDate(scheduledDateForDay(baseTimes[slotIndex], dayIndex, 0))}|${baseTimes[slotIndex]}|${i}|${settings.delayMode}|${settings.delayMin}|${settings.delayMax}`;
+          cumulative += seededDelayMinutes(seed);
+          offsets.push(cumulative);
+        }
+        accountOffsetsByDaySlot.set(key, offsets);
+      }
+      return (accountOffsetsByDaySlot.get(key) || [])[accountIndex] || 0;
+    }
+
     for(let d=0; d<days; d++){
       usableAccounts.forEach((a, accountIndex) => {
         const usedToday = new Set();
         for(let slot=0; slot<perDay; slot++){
-          const scheduled = scheduledDateForDay(baseTimes[slot], d, 0);
+          const scheduled = scheduledDateForDay(baseTimes[slot], d, getAccountOffset(d, slot, accountIndex));
           if(scheduled.getTime() < now.getTime() + 2*60000) scheduled.setDate(scheduled.getDate()+1);
           const accKey = normalizeAccountKey(a);
 
-          // قاعدة ذهبية: الحساب الواحد له Job واحد فقط لكل وقت نشر.
+          // قاعدة ذهبية: الحساب الواحد له Job واحد فقط لكل وقت نشر الفعلي بعد تطبيق التأخير.
           if(hasAccountSlotInQueue(accKey, scheduled) || out.some(x => queueItemAccountKey(x) === accKey && slotKeyForItem(x) === (dateKeyFromDate(scheduled) + "::" + minuteKeyFromDate(scheduled)))) continue;
 
           const v = chooseSmartVideo(a, d, slot + accountIndex, usedToday, plannedMap);
@@ -868,6 +890,26 @@ let __serverStateSyncTimerScoped = null;
     d.setHours(hh || 0, mm || 0, 0, 0);
     d.setMinutes(d.getMinutes() + Number(extraMinutes || 0));
     return d;
+  }
+
+  function seededHash(str){
+    let h = 2166136261;
+    const text = String(str || "");
+    for(let i=0; i<text.length; i++){
+      h ^= text.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  }
+
+  function seededDelayMinutes(seed){
+    const range = parseDelayRange();
+    let min = Math.max(0, Number(range[0] || 0));
+    let max = Math.max(0, Number(range[1] || 0));
+    if(max < min) [min, max] = [max, min];
+    if(max <= 0) return 0;
+    if(max === min) return min;
+    return min + (seededHash(seed) % (max - min + 1));
   }
 
   function uploadWithProgress(url, file, options = {}) {
