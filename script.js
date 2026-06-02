@@ -329,7 +329,7 @@ let __serverStateSyncTimerScoped = null;
   function ensureRollingQueue(days = 3){
     if(!autopilot || !videos.length || !accounts.length) return false;
     cleanupQueueForAutopilot();
-    const target = normalizeConfiguredTimes().length * Math.max(1, accounts.length) * Number(days || 3);
+    const target = normalizeConfiguredTimes().length * Math.max(1, getUniqueUsableAccounts().length) * Number(days || 3);
     if(activeQueueCount() >= target) return false;
     const future = buildSmartQueue(days);
     const before = queue.length;
@@ -676,6 +676,20 @@ let __serverStateSyncTimerScoped = null;
     return String(account && (account.id || account.name || account.user || account.username) || "");
   }
 
+  function getUniqueUsableAccounts(){
+    const official = (Array.isArray(accounts) ? accounts : []).filter(a => a && a.official !== false && (a.id || a.name || a.user || a.username));
+    const source = official.length ? official : (Array.isArray(accounts) ? accounts : []);
+    const seen = new Set();
+    const unique = [];
+    source.forEach(a => {
+      const key = normalizeAccountKey(a);
+      if(!key || seen.has(key)) return;
+      seen.add(key);
+      unique.push(a);
+    });
+    return unique;
+  }
+
   function dateKeyFromDate(d){
     return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0,10);
   }
@@ -708,6 +722,15 @@ let __serverStateSyncTimerScoped = null;
     return queue.some(q => {
       if(!q || ["deleted","failed","skipped"].includes(q.status)) return false;
       return queueItemAccountKey(q) === String(accountKey) && slotKeyForItem(q) === slotKey;
+    });
+  }
+
+  function hasAccountBaseSlotInQueue(accountKey, scheduledAt, slotIndex){
+    const day = dateKeyFromDate(scheduledAt);
+    return queue.some(q => {
+      if(!q || ["deleted","failed","skipped"].includes(q.status)) return false;
+      const qDay = dateKeyFromDate(new Date(q.scheduledAt || q.publishedAt || q.createdAt || 0));
+      return queueItemAccountKey(q) === String(accountKey) && qDay === day && Number(q.slotIndex) === Number(slotIndex);
     });
   }
 
@@ -777,8 +800,8 @@ let __serverStateSyncTimerScoped = null;
   }
 
   function buildSmartQueue(days){
-    const official = accounts.filter(a => a.official !== false && a.id);
-    const usableAccounts = official.length ? official : accounts;
+    // v55: نستخدم حسابات فريدة فقط، لأن تكرار الحساب في accounts كان يسبب أكثر من فيديو لنفس الحساب في نفس Slot.
+    const usableAccounts = getUniqueUsableAccounts();
     const out = [];
     const plannedMap = new Map();
     const now = new Date();
@@ -815,7 +838,11 @@ let __serverStateSyncTimerScoped = null;
           if(scheduled.getTime() < now.getTime() + 2*60000) scheduled.setDate(scheduled.getDate()+1);
           const accKey = normalizeAccountKey(a);
 
-          // قاعدة ذهبية: الحساب الواحد له Job واحد فقط لكل وقت نشر الفعلي بعد تطبيق التأخير.
+          // قاعدة ذهبية v55: الحساب الواحد له Job واحد فقط لكل Slot يومي أصلي، حتى لو تغيّر وقت التنفيذ بسبب التأخير.
+          // هذا يمنع سيناريو: Louis عند 12:11 و 12:27 لنفس Slot الساعة 12.
+          const dayKey = dateKeyFromDate(scheduled);
+          const baseSlotKey = dayKey + "::slot" + slot;
+          if(hasAccountBaseSlotInQueue(accKey, scheduled, slot) || out.some(x => queueItemAccountKey(x) === accKey && String(x.baseSlotKey || "") === baseSlotKey)) continue;
           if(hasAccountSlotInQueue(accKey, scheduled) || out.some(x => queueItemAccountKey(x) === accKey && slotKeyForItem(x) === (dateKeyFromDate(scheduled) + "::" + minuteKeyFromDate(scheduled)))) continue;
 
           const v = chooseSmartVideo(a, d, slot + accountIndex, usedToday, plannedMap);
@@ -827,8 +854,9 @@ let __serverStateSyncTimerScoped = null;
           markPlanned(plannedMap, v, a, scheduled);
           const stamp = scheduled.toISOString();
           out.push({
-            id: `${accKey}_${dateKeyFromDate(scheduled)}_${minuteKeyFromDate(scheduled)}`,
+            id: `${accKey}_${dateKeyFromDate(scheduled)}_slot${slot}`,
             slotIndex: slot,
+            baseSlotKey: baseSlotKey,
             slotKey: dateKeyFromDate(scheduled) + "::" + minuteKeyFromDate(scheduled),
             videoId: v.id,
             video: v.name,
@@ -854,7 +882,9 @@ let __serverStateSyncTimerScoped = null;
 
   function dedupeQueueItems(items){
     const seenSlot = new Set();
+    const seenBaseSlot = new Set();
     const seenVideoDay = new Set();
+    const dayCounts = new Map();
     const out = [];
     const priority = { publishing: 8, waiting_publish: 7, publish_check: 6, published: 5, scheduled: 4, failed: 2, skipped: 1 };
     [...items].sort((a,b)=>{
@@ -869,15 +899,24 @@ let __serverStateSyncTimerScoped = null;
       const d = new Date(item.scheduledAt || item.publishedAt || item.createdAt || 0);
       const day = dateKeyFromDate(d);
       const slotKey = acc + "::" + slotKeyForItem(item);
+      const baseSlotKey = acc + "::" + day + "::slot" + Number(item.slotIndex || 0);
       const videoDayKey = acc + "::" + vid + "::" + day;
+      const countKey = acc + "::" + day;
+      const dailyLimit = normalizeConfiguredTimes().length;
 
-      // لا نسمح بأكثر من Job واحد لنفس الحساب في نفس وقت النشر.
+      // لا نسمح بأكثر من Job واحد لنفس الحساب في نفس Slot اليوم الأصلي.
+      if(seenBaseSlot.has(baseSlotKey)) return;
+      // ولا نسمح بأكثر من Job واحد لنفس الحساب في نفس وقت النشر الفعلي.
       if(seenSlot.has(slotKey)) return;
       // ولا نسمح بتكرار نفس الفيديو على نفس الحساب في نفس اليوم.
       if(seenVideoDay.has(videoDayKey)) return;
+      // حد صارم: كل حساب لا يتجاوز عدد الأوقات المختارة يوميًا، مثل 3 فقط.
+      if((dayCounts.get(countKey) || 0) >= dailyLimit) return;
 
+      seenBaseSlot.add(baseSlotKey);
       seenSlot.add(slotKey);
       seenVideoDay.add(videoDayKey);
+      dayCounts.set(countKey, (dayCounts.get(countKey) || 0) + 1);
       out.push(item);
     });
     return out;
