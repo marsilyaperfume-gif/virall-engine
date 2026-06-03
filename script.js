@@ -1799,11 +1799,34 @@ ${rand(ctaList)} 🛒`
     const key = normalizeVideoKey(v);
     const related = (queue || []).filter(q => q && q.status === "published" && (queueItemVideoKey(q) === String(key) || q.video === v.name));
     const last = related.sort((a,b)=>new Date(b.publishedAt || 0)-new Date(a.publishedAt || 0))[0];
+    const uploaderName = v.telegramUploaderName || v.telegramFirstName || v.telegramUsername || v.uploadedByName || v.uploadedBy || "";
+    const uploaderUser = v.telegramUsername ? (String(v.telegramUsername).startsWith("@") ? v.telegramUsername : "@" + v.telegramUsername) : "";
     return {
       count: Math.max((v.postedTo || []).length, related.length),
       lastAt: last && last.publishedAt ? new Date(last.publishedAt).toLocaleString("ar") : "—",
-      accounts: [...new Set([...(v.postedTo || []), ...related.map(q => q.account).filter(Boolean)])]
+      lastTime: last && last.publishedAt ? new Date(last.publishedAt).toLocaleTimeString("ar", { hour:"2-digit", minute:"2-digit" }) : "—",
+      lastDate: last && last.publishedAt ? new Date(last.publishedAt).toLocaleDateString("ar") : "—",
+      accounts: [...new Set([...(v.postedTo || []), ...related.map(q => q.account).filter(Boolean)])],
+      caption: (last && (last.caption || last.text)) || v.caption || "",
+      uploaderName,
+      uploaderUser
     };
+  }
+
+  function telegramUploaderLabel(v) {
+    if (!v || v.source !== "telegram") return "";
+    const name = v.telegramUploaderName || v.telegramFirstName || v.telegramUsername || v.uploadedByName || "موظف تلجرام";
+    const user = v.telegramUsername ? (String(v.telegramUsername).startsWith("@") ? v.telegramUsername : "@" + v.telegramUsername) : "";
+    return `${name}${user ? " · " + user : ""}`;
+  }
+
+  function telegramStaffStats() {
+    const map = new Map();
+    (videos || []).filter(v => v && v.source === "telegram").forEach(v => {
+      const label = telegramUploaderLabel(v) || "غير معروف";
+      map.set(label, (map.get(label) || 0) + 1);
+    });
+    return [...map.entries()].sort((a,b)=>b[1]-a[1]);
   }
 
   function deleteAllVideos() {
@@ -1830,14 +1853,43 @@ ${rand(ctaList)} 🛒`
     const el = $("publishedVideosList");
     if (!el) return;
     const published = videos.filter(videoWasPublished);
-    el.innerHTML = published.length ? published.map((v, index) => {
+    const staff = telegramStaffStats().slice(0, 6);
+    const staffHtml = staff.length ? `<div class="published-staff-panel">
+      <div class="published-staff-title">🏆 نشاط موظفي تلجرام</div>
+      <div class="published-staff-grid">${staff.map(([name,count]) => `<span><b>${escapeHtml(count)}</b>${escapeHtml(name)}</span>`).join("")}</div>
+    </div>` : "";
+    if (!published.length) {
+      el.innerHTML = `${staffHtml}<div class="empty-state">لم يتم نشر أي فيديو بعد.</div>`;
+      return;
+    }
+    el.innerHTML = `${staffHtml}<div class="published-grid">${published.map((v) => {
       const meta = publishedVideoMeta(v);
-      return `<div class="video-item published-video">
-        <video src="${escapeHtml(publicVideoUrl(v) || v.url || "")}" muted playsinline preload="metadata"></video>
-        <div><b>${escapeHtml(v.name)}</b><span>نُشر ${meta.count} مرة · آخر نشر: ${escapeHtml(meta.lastAt)}</span><small class="muted">${escapeHtml(meta.accounts.join(" · ") || "لا توجد حسابات محفوظة")}</small></div>
-        <span class="ok">${v.topPerformer || v.success ? "ناجح للتدوير" : "منشور"}</span>
-      </div>`;
-    }).join("") : `<div class="video-item">لم يتم نشر أي فيديو بعد.</div>`;
+      const accounts = meta.accounts.join(" · ") || "لا توجد حسابات محفوظة";
+      const uploader = telegramUploaderLabel(v);
+      return `<article class="published-card">
+        <div class="published-thumb-wrap">
+          <video src="${escapeHtml(publicVideoUrl(v) || v.url || "")}" muted playsinline preload="metadata"></video>
+          <span class="published-source">${escapeHtml(v.source === "telegram" ? "Telegram" : (v.uploadedToSupabase ? "Supabase" : "Local"))}</span>
+        </div>
+        <div class="published-info">
+          <div class="published-title-row">
+            <b title="${escapeHtml(v.name)}">${escapeHtml(v.name)}</b>
+            <span class="ok tiny">✅ تم النشر</span>
+          </div>
+          <p>${escapeHtml(v.hook || meta.caption || "بدون عنوان")}</p>
+          <div class="published-meta">
+            <span>📅 ${escapeHtml(meta.lastDate)}</span>
+            <span>🕒 ${escapeHtml(meta.lastTime)}</span>
+            <span>📣 ${escapeHtml(accounts)}</span>
+            <span>🔁 ${escapeHtml(String(meta.count))} مرة</span>
+            ${uploader ? `<span>👤 ${escapeHtml(uploader)}</span>` : ""}
+          </div>
+        </div>
+        <div class="published-actions">
+          <button class="secondary" type="button" data-preview-published="${escapeHtml(v.id || v.name)}">عرض التفاصيل</button>
+        </div>
+      </article>`;
+    }).join("")}</div>`;
   }
 
   function renderVideos() {
@@ -1863,7 +1915,7 @@ ${rand(ctaList)} 🛒`
             <span class="compat ${compatClass}">${escapeHtml(v.compatibilityLabel || "قيد الفحص")}</span>
           </div>
           <p>${escapeHtml(v.hook || "بدون عنوان")}</p>
-          <div class="video-meta"><span>${fmtBytes(v.size || 0)}</span><span>${statusText}</span><span>Score ${Number(v.score || 50)}</span></div>
+          <div class="video-meta"><span>${fmtBytes(v.size || 0)}</span><span>${statusText}</span><span>Score ${Number(v.score || 50)}</span>${v.source === "telegram" ? `<span>👤 ${escapeHtml(telegramUploaderLabel(v) || "Telegram")}</span>` : ""}</div>
           ${v.repairReason ? `<small class="muted repair-note">${escapeHtml(v.repairReason)}</small>` : ""}
         </div>
         <div class="video-actions compact-actions">
@@ -2803,13 +2855,16 @@ persistAll();
         el.innerHTML = `<div class="empty-state">لا توجد فيديوهات مستلمة من تلجرام بعد.</div>`;
         return;
       }
-      el.innerHTML = uploads.slice(0, 30).map(u => {
+      el.innerHTML = uploads.slice(0, 50).map(u => {
         const ok = u.ok ? "✅" : "❌";
         const at = u.at ? new Date(u.at).toLocaleString("ar") : "—";
         const size = u.size ? fmtBytes(u.size) : "";
+        const uploader = u.uploaderName || u.firstName || u.username || u.userId || "غير معروف";
+        const username = u.username ? (String(u.username).startsWith("@") ? u.username : "@" + u.username) : "";
         return `<div class="telegram-upload-row ${u.ok ? "ok" : "bad"}">
           <div><b>${ok} ${escapeHtml(u.fileName || "video")}</b><span>${escapeHtml(at)} ${size ? "· " + escapeHtml(size) : ""}</span></div>
           <p>${escapeHtml(u.error || u.stage || "uploaded")}</p>
+          <small class="telegram-uploader">👤 ${escapeHtml(uploader)} ${username ? "· " + escapeHtml(username) : ""}</small>
         </div>`;
       }).join("");
     } catch (err) {

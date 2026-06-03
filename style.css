@@ -447,3 +447,85 @@ aside{background:rgba(4,9,20,.72);backdrop-filter:blur(18px);-webkit-backdrop-fi
 /* v61 Telegram library sync + access control */
 .access-card .access-row{display:grid;grid-template-columns:1fr auto;gap:10px;margin:14px 0}.access-card input{min-width:0}.status-box.compact{padding:12px;border-radius:16px;margin:10px 0;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.09);color:#dce8ff}.allowed-list{display:flex;flex-wrap:wrap;gap:9px;margin-top:12px}.allowed-chip{display:inline-flex;align-items:center;gap:8px;border-radius:999px;padding:8px 10px;background:rgba(28,48,82,.9);border:1px solid rgba(150,180,230,.18);color:#eef5ff;font-weight:800;font-size:13px}.allowed-chip button{width:22px;height:22px;border-radius:999px;border:0;background:rgba(255,80,100,.18);color:#fff;padding:0;cursor:pointer}.telegram-log-card{grid-column:1/-1}.empty-state.small{padding:12px;font-size:13px;opacity:.8}
 @media(max-width:700px){.access-card .access-row{grid-template-columns:1fr}.access-card .access-row button{width:100%}}
+
+/* v62 - Published videos smart cards + Telegram staff tracking UI only. Publish/link logic untouched. */
+.published-list{
+  display:block;
+}
+.published-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(360px,1fr));
+  gap:14px;
+  align-items:stretch;
+}
+.published-card{
+  display:grid;
+  grid-template-columns:92px minmax(0,1fr);
+  grid-template-rows:auto auto;
+  gap:12px;
+  background:linear-gradient(145deg,#0a172b,#0e2038);
+  border:1px solid #263d65;
+  border-right:4px solid var(--good,#0dbb78);
+  border-radius:20px;
+  padding:12px;
+  min-width:0;
+  box-shadow:0 20px 55px rgba(0,0,0,.20);
+  transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease;
+}
+.published-card:hover{
+  transform:translateY(-2px);
+  border-color:#3f6aa0;
+  box-shadow:0 22px 52px rgba(0,0,0,.26);
+}
+.published-thumb-wrap{
+  position:relative;
+  width:92px;
+  height:128px;
+  border-radius:16px;
+  overflow:hidden;
+  background:#000;
+  grid-row:1 / span 2;
+  border:1px solid rgba(255,255,255,.08);
+}
+.published-thumb-wrap video{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:block;
+  background:#000;
+  filter:saturate(.92) brightness(.9);
+}
+.published-source{
+  position:absolute;
+  right:6px;
+  bottom:6px;
+  background:rgba(5,12,24,.82);
+  border:1px solid rgba(255,255,255,.16);
+  color:#fff;
+  border-radius:999px;
+  padding:3px 7px;
+  font-size:10px;
+  font-weight:800;
+}
+.published-info{min-width:0;}
+.published-title-row{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;}
+.published-title-row b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px;color:#f3f7ff;}
+.ok.tiny{font-size:11px;padding:5px 8px;white-space:nowrap;}
+.published-info p{margin:8px 0 10px;color:#cbd7ec;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:42px;}
+.published-meta{display:flex;flex-wrap:wrap;gap:6px;}
+.published-meta span{background:#17243a;border:1px solid #263d65;border-radius:999px;padding:5px 8px;color:#aebbd0;font-size:12px;}
+.published-actions{grid-column:2;display:flex;gap:8px;align-items:center;}
+.published-actions button{border-radius:12px;padding:9px 11px;}
+.published-staff-panel{margin-bottom:14px;background:linear-gradient(145deg,#0a172b,#0e2038);border:1px solid rgba(139,92,255,.32);border-radius:20px;padding:14px;}
+.published-staff-title{font-weight:900;color:#fff;margin-bottom:10px;}
+.published-staff-grid{display:flex;flex-wrap:wrap;gap:8px;}
+.published-staff-grid span{display:inline-flex;align-items:center;gap:6px;background:#17243a;border:1px solid #31486d;border-radius:999px;padding:7px 11px;color:#cbd7ec;font-size:12px;}
+.published-staff-grid b{background:#7b48ff;color:#fff;border-radius:999px;padding:3px 7px;font-size:11px;}
+.telegram-uploader{display:block;margin-top:7px;color:#9fd7ff;font-size:12px;}
+@media(max-width:760px){
+  .published-grid{grid-template-columns:1fr;}
+  .published-card{grid-template-columns:76px minmax(0,1fr);gap:10px;padding:10px;border-radius:16px;}
+  .published-thumb-wrap{width:76px;height:108px;border-radius:14px;}
+  .published-actions{grid-column:1/-1;}
+  .published-actions button{width:100%;}
+}

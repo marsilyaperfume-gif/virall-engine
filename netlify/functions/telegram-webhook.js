@@ -124,11 +124,19 @@ exports.handler = async function(event){
   try { update = JSON.parse(event.body || "{}"); } catch(err) { return json(400, { ok: false, error: "Invalid JSON" }); }
   const message = update.message || update.channel_post || null;
   const chatId = message && message.chat && message.chat.id;
+  const from = (message && message.from) || {};
+  const uploader = {
+    userId: from.id ? String(from.id) : "",
+    username: String(from.username || "").replace(/^@+/, ""),
+    firstName: from.first_name || "",
+    lastName: from.last_name || "",
+    displayName: [from.first_name, from.last_name].filter(Boolean).join(" ") || from.username || (from.id ? String(from.id) : "Telegram")
+  };
 
   const allowedUsers = await readAllowedUsers().catch(() => []);
   if(message && !senderAllowed(message, allowedUsers)){
     const from = message.from || {};
-    await appendTelegramLog({ ok: false, stage: "blocked_user", fileName: "blocked", error: `Blocked Telegram sender @${from.username || ""} ${from.id || ""}` }).catch(() => {});
+    await appendTelegramLog({ ok: false, stage: "blocked_user", fileName: "blocked", error: `Blocked Telegram sender @${from.username || ""} ${from.id || ""}`, userId: uploader.userId, username: uploader.username, firstName: uploader.firstName, lastName: uploader.lastName, uploaderName: uploader.displayName }).catch(() => {});
     await reply(chatId, "غير مسموح لك بإرسال فيديوهات لهذا البوت. تواصل مع المسؤول لإضافتك.");
     return json(200, { ok: true, blocked: true });
   }
@@ -142,7 +150,7 @@ exports.handler = async function(event){
 
   const maxMb = Number(process.env.TELEGRAM_MAX_VIDEO_MB || 200);
   if(video.size && video.size > maxMb * 1024 * 1024){
-    await appendTelegramLog({ ok: false, stage: "size_limit", fileName: video.fileName, size: video.size });
+    await appendTelegramLog({ ok: false, stage: "size_limit", fileName: video.fileName, size: video.size, userId: uploader.userId, username: uploader.username, firstName: uploader.firstName, lastName: uploader.lastName, uploaderName: uploader.displayName });
     await reply(chatId, `حجم الفيديو كبير (${Math.round(video.size/1024/1024)}MB). الحد الحالي ${maxMb}MB.`);
     return json(200, { ok: false, error: "file_too_large" });
   }
@@ -173,6 +181,12 @@ exports.handler = async function(event){
       source: "telegram",
       telegramFileId: video.fileId,
       telegramChatId: String(chatId || ""),
+      telegramUserId: uploader.userId,
+      telegramUsername: uploader.username,
+      telegramFirstName: uploader.firstName,
+      telegramLastName: uploader.lastName,
+      telegramUploaderName: uploader.displayName,
+      uploadedByName: uploader.displayName,
       hook: "فيديو جديد من تلجرام",
       caption: caption(),
       status: "Telegram Upload ✅",
@@ -186,11 +200,11 @@ exports.handler = async function(event){
     };
     videos.push(newVideo);
     await writeState({ ...state, videos, savedAt: new Date().toISOString() });
-    await appendTelegramLog({ ok: true, stage: "uploaded", fileName: safeName, size: buffer.length, publicUrl: uploaded.publicUrl, videoId: newVideo.id });
+    await appendTelegramLog({ ok: true, stage: "uploaded", fileName: safeName, size: buffer.length, publicUrl: uploaded.publicUrl, videoId: newVideo.id, userId: uploader.userId, username: uploader.username, firstName: uploader.firstName, lastName: uploader.lastName, uploaderName: uploader.displayName });
     await reply(chatId, `تم رفع الفيديو بنجاح ✅\nدخل مكتبة الفيديوهات وسيتم أخذه تلقائياً في الجدولة القادمة.`);
     return json(200, { ok: true, video: newVideo });
   }catch(err){
-    await appendTelegramLog({ ok: false, stage: "error", fileName: video.fileName, error: err.message || String(err) }).catch(() => {});
+    await appendTelegramLog({ ok: false, stage: "error", fileName: video.fileName, error: err.message || String(err), userId: uploader.userId, username: uploader.username, firstName: uploader.firstName, lastName: uploader.lastName, uploaderName: uploader.displayName }).catch(() => {});
     await reply(chatId, `فشل رفع الفيديو ❌\n${err.message || String(err)}`);
     return json(200, { ok: false, error: err.message || String(err) });
   }
